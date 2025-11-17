@@ -4,11 +4,11 @@ using UnityEngine.InputSystem;
 public class Unit : MonoBehaviour
 {
     public Transform cameraAttachPoint;
-    public Player owner; // Владелец юнита (Player1 или Player2)
+    public Player owner; // Владелец юнита
 
-    [SerializeField] private int health = 100; // Новое: HP юнита
-    [SerializeField] private int damage = 20; // Новое: Урон от атаки
-    [SerializeField] private float attackRange = 10f; // Новое: Дальность атаки (для Raycast)
+    [SerializeField] private int health = 100;
+    [SerializeField] private int damage = 20;
+    [SerializeField] private float attackRange = 10f;
 
     private CharacterController controller;
     [SerializeField] private float moveSpeed = 5f;
@@ -23,8 +23,10 @@ public class Unit : MonoBehaviour
     private Vector2 moveInput;
     private Vector2 lookInput;
     private bool jumpInput;
-    private bool fireInput; // Новое: Ввод для атаки (ЛКМ)
+    private bool fireInput;
     private bool isControlled = false;
+    
+    private Animator animator;
 
     void Start()
     {
@@ -38,10 +40,11 @@ public class Unit : MonoBehaviour
         {
             Debug.LogError($"Unit {gameObject.name}: CameraAttachPoint not assigned!");
         }
-        if (!gameObject.CompareTag("Unit") && gameObject.layer != LayerMask.NameToLayer("Units"))
+        if (gameObject.layer != LayerMask.NameToLayer("Units"))
         {
             Debug.LogWarning($"Unit {gameObject.name}: Ensure layer is set to 'Units'!");
         }
+        animator = GetComponent<Animator>();
     }
 
     public void OnMove(InputAction.CallbackContext context)
@@ -71,7 +74,6 @@ public class Unit : MonoBehaviour
         }
     }
 
-    // Новое: Метод для атаки (ЛКМ)
     public void OnFire(InputAction.CallbackContext context)
     {
         fireInput = context.performed;
@@ -129,15 +131,18 @@ public class Unit : MonoBehaviour
         float mouseX = lookInput.x * mouseSensitivity;
         transform.Rotate(Vector3.up * mouseX);
 
-        // Новое: Атака на ЛКМ
         if (fireInput)
         {
             fireInput = false; // Сбрасываем, чтобы не спамить
             Attack();
         }
+        if (animator != null)
+        {
+            float speed = moveInput.magnitude; // Скорость от 0 (стоп) до 1 (полная)
+            animator.SetFloat("Speed", speed); // Animator перейдёт в Run, если Speed > 0.1
+        }
     }
 
-    // Новое: Метод атаки (Raycast от камеры)
     private void Attack()
     {
         // Получаем камеру (actionCamera прикреплена к cameraAttachPoint)
@@ -154,7 +159,6 @@ public class Unit : MonoBehaviour
         }
     }
 
-    // Новое: Получение урона
     public void TakeDamage(int amount)
     {
         health -= amount;
@@ -164,20 +168,30 @@ public class Unit : MonoBehaviour
         }
     }
 
-    // Новое: Смерть юнита
     private void Die()
     {
         Debug.Log($"Unit {gameObject.name} died!");
         Destroy(gameObject); // Или деактивируй: gameObject.SetActive(false);
     }
+    public void ResetAnimation()
+    {
+    if (animator != null)
+        {
+            animator.SetFloat("Speed", 0f); // Idle
+            animator.Update(0f); // Принудительный апдейт для мгновенного сброса
+        }
+    }
 
     public void SetControlled(bool controlled)
     {
         isControlled = controlled;
+        if (!controlled)
+        {
+            ResetAnimation(); // Сброс анимации при выходе из контроля
+        }
         Debug.Log($"Unit {gameObject.name}: Controlled = {isControlled}");
     }
 
-    // Новое: Геттер для HP (если нужно для UI)
     public int GetHealth()
     {
         return health;

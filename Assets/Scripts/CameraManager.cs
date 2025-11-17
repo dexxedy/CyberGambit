@@ -123,6 +123,7 @@ public class CameraManager : MonoBehaviour
         // Отключаем управление у текущего юнита
         if (currentUnit != null)
         {
+            currentUnit.ResetAnimation();
             currentUnit.SetControlled(false);
             currentUnit = null;
         }
