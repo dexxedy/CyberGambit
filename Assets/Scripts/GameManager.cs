@@ -1,11 +1,11 @@
 using UnityEngine;
 
-public enum Player { Player1, Player2 } // Enum для игроков
+public enum Player { Player1, Player2 }
 
 public class GameManager : MonoBehaviour
 {
-    public static GameManager Instance; // Singleton для доступа из других скриптов
-    public Player currentPlayer = Player.Player1; // Начинаем с твоего хода (Player1)
+    public static GameManager Instance;
+    public Player currentPlayer = Player.Player1;
 
     void Awake()
     {

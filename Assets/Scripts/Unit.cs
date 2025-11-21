@@ -4,7 +4,7 @@ using UnityEngine.InputSystem;
 public class Unit : MonoBehaviour
 {
     public Transform cameraAttachPoint;
-    public Player owner; // Владелец юнита
+    public Player owner;
 
     [SerializeField] private int health = 100;
     [SerializeField] private int damage = 20;
@@ -25,6 +25,7 @@ public class Unit : MonoBehaviour
     private bool jumpInput;
     private bool fireInput;
     private bool isControlled = false;
+    
     
     private Animator animator;
 
@@ -85,14 +86,12 @@ public class Unit : MonoBehaviour
 
     void Update()
     {
-        // Всегда проверяем заземление
         isGrounded = controller.isGrounded;
         if (isGrounded && playerVelocity.y < 0)
         {
             playerVelocity.y = -2f;
         }
 
-        // Применяем гравитацию всегда, если юнит не заземлён
         if (!isGrounded)
         {
             playerVelocity.y += gravity * Time.deltaTime;
@@ -133,25 +132,28 @@ public class Unit : MonoBehaviour
 
         if (fireInput)
         {
-            fireInput = false; // Сбрасываем, чтобы не спамить
+            fireInput = false;
             Attack();
         }
         if (animator != null)
         {
-            float speed = moveInput.magnitude; // Скорость от 0 (стоп) до 1 (полная)
-            animator.SetFloat("Speed", speed); // Animator перейдёт в Run, если Speed > 0.1
+            float speed = moveInput.magnitude;
+            animator.SetFloat("Speed", speed);
         }
     }
 
     private void Attack()
     {
-        // Получаем камеру (actionCamera прикреплена к cameraAttachPoint)
-        Camera actionCamera = Camera.main; // Или ссылка на actionCamera из CameraManager, если нужно
+        if (animator != null)
+        {
+            animator.SetTrigger("Attack");
+        }
+        Camera actionCamera = Camera.main; 
         Ray ray = new Ray(actionCamera.transform.position, actionCamera.transform.forward);
         if (Physics.Raycast(ray, out RaycastHit hit, attackRange, LayerMask.GetMask("Units")))
         {
             Unit target = hit.collider.GetComponent<Unit>();
-            if (target != null && target.owner != owner) // Только враг
+            if (target != null && target.owner != owner)
             {
                 target.TakeDamage(damage);
                 Debug.Log($"Unit {gameObject.name} attacked {target.gameObject.name} for {damage} damage. Target HP: {target.health}");
@@ -171,14 +173,14 @@ public class Unit : MonoBehaviour
     private void Die()
     {
         Debug.Log($"Unit {gameObject.name} died!");
-        Destroy(gameObject); // Или деактивируй: gameObject.SetActive(false);
+        Destroy(gameObject);
     }
     public void ResetAnimation()
     {
     if (animator != null)
         {
-            animator.SetFloat("Speed", 0f); // Idle
-            animator.Update(0f); // Принудительный апдейт для мгновенного сброса
+            animator.SetFloat("Speed", 0f);
+            animator.Update(0f);
         }
     }
 
@@ -187,7 +189,7 @@ public class Unit : MonoBehaviour
         isControlled = controlled;
         if (!controlled)
         {
-            ResetAnimation(); // Сброс анимации при выходе из контроля
+            ResetAnimation();
         }
         Debug.Log($"Unit {gameObject.name}: Controlled = {isControlled}");
     }

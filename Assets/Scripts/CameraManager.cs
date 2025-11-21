@@ -1,7 +1,7 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
 using TMPro; // Для TextMeshProUGUI (таймер)
-using System.Collections; // Для Coroutine
+using System.Collections;
 
 public class CameraManager : MonoBehaviour
 {
@@ -21,18 +21,14 @@ public class CameraManager : MonoBehaviour
 
     void Start()
     {
-        // По умолчанию тактическая камера
         tacticalCamera.enabled = true;
         actionCamera.enabled = false;
 
-        // Курсор видим в тактическом режиме
         Cursor.lockState = CursorLockMode.None;
         Cursor.visible = true;
 
-        // Устанавливаем начальную позицию и ротацию камеры (для Player1)
         SetTacticalCameraPosition(GameManager.Instance.currentPlayer);
 
-        // Скрываем таймер изначально
         if (timerText != null) timerText.gameObject.SetActive(false);
     }
 
@@ -40,13 +36,11 @@ public class CameraManager : MonoBehaviour
     {
         if (isActionMode)
         {
-            // Обновляем таймер в UI
             if (timerText != null)
             {
                 timerText.text = $"Осталось: {remainingTime:F1} сек";
             }
 
-            // Возврат к тактической камере по ESC (опционально, можно убрать)
             if (Keyboard.current.escapeKey.wasPressedThisFrame)
             {
                 StopAllCoroutines();
@@ -55,14 +49,13 @@ public class CameraManager : MonoBehaviour
         }
         else
         {
-            // Выбор юнита по клику мыши только в свой ход
             if (Mouse.current.leftButton.wasPressedThisFrame)
             {
                 Ray ray = tacticalCamera.ScreenPointToRay(Mouse.current.position.ReadValue());
                 if (Physics.Raycast(ray, out RaycastHit hit, Mathf.Infinity, unitLayer))
                 {
                     Unit unit = hit.collider.GetComponent<Unit>();
-                    if (unit != null && unit.owner == GameManager.Instance.currentPlayer) // Только свои юниты!
+                    if (unit != null && unit.owner == GameManager.Instance.currentPlayer)
                     {
                         SwitchToActionMode(unit);
                     }
@@ -77,32 +70,26 @@ public class CameraManager : MonoBehaviour
 
     private void SwitchToActionMode(Unit unit)
     {
-        // Отключаем управление у предыдущего юнита, если он был
         if (currentUnit != null)
         {
             currentUnit.SetControlled(false);
         }
 
-        // Устанавливаем новый юнит
         currentUnit = unit;
         currentUnit.SetControlled(true);
 
-        // Прикрепляем камеру к точке юнита
         actionCamera.transform.SetParent(unit.cameraAttachPoint);
         actionCamera.transform.localPosition = Vector3.zero;
         actionCamera.transform.localRotation = Quaternion.identity;
 
-        // Переключаем камеры
         tacticalCamera.enabled = false;
         actionCamera.enabled = true;
 
-        // Блокируем курсор
         Cursor.lockState = CursorLockMode.Locked;
         Cursor.visible = false;
 
         isActionMode = true;
 
-        // Запускаем таймер
         remainingTime = actionTime;
         if (timerText != null) timerText.gameObject.SetActive(true);
         StartCoroutine(ActionTimer());
@@ -120,7 +107,6 @@ public class CameraManager : MonoBehaviour
 
     private void SwitchToTacticalMode()
     {
-        // Отключаем управление у текущего юнита
         if (currentUnit != null)
         {
             currentUnit.ResetAnimation();
@@ -128,23 +114,18 @@ public class CameraManager : MonoBehaviour
             currentUnit = null;
         }
 
-        // Открепляем камеру
         actionCamera.transform.SetParent(null);
 
-        // Переключаем камеры
         tacticalCamera.enabled = true;
         actionCamera.enabled = false;
 
-        // Разблокируем курсор
         Cursor.lockState = CursorLockMode.None;
         Cursor.visible = true;
 
         isActionMode = false;
 
-        // Скрываем таймер
         if (timerText != null) timerText.gameObject.SetActive(false);
 
-        // Переход хода и смена позиции/ротации камеры
         GameManager.Instance.SwitchTurn();
         SetTacticalCameraPosition(GameManager.Instance.currentPlayer);
     }
@@ -154,12 +135,12 @@ public class CameraManager : MonoBehaviour
         if (player == Player.Player1)
         {
             tacticalCamera.transform.position = player1TacticalPosition;
-            tacticalCamera.transform.rotation = player1TacticalRotation; // Ротация для Player1
+            tacticalCamera.transform.rotation = player1TacticalRotation;
         }
         else
         {
             tacticalCamera.transform.position = player2TacticalPosition;
-            tacticalCamera.transform.rotation = player2TacticalRotation; // Ротация для Player2
+            tacticalCamera.transform.rotation = player2TacticalRotation;
         }
     }
 }

@@ -397,6 +397,7 @@ MonoBehaviour:
   cameraAttachPoint: {fileID: 579020992044452277}
   owner: 0
   health: 100
+  unitType: 5
   damage: 20
   attackRange: 10
   moveSpeed: 5
@@ -457,22 +458,6 @@ MonoBehaviour:
         m_CallState: 2
     m_ActionId: 5db111e3-ab07-4c8f-afd7-1dbd8ab5b1f9
     m_ActionName: 'Player/Move[/Keyboard/w,/Keyboard/s,/Keyboard/a,/Keyboard/d]'
-  - m_PersistentCalls:
-      m_Calls:
-      - m_Target: {fileID: 1743001443084913523}
-        m_TargetAssemblyTypeName: Unit, Assembly-CSharp
-        m_MethodName: OnJump
-        m_Mode: 0
-        m_Arguments:
-          m_ObjectArgument: {fileID: 0}
-          m_ObjectArgumentAssemblyTypeName: UnityEngine.Object, UnityEngine
-          m_IntArgument: 0
-          m_FloatArgument: 0
-          m_StringArgument: 
-          m_BoolArgument: 0
-        m_CallState: 2
-    m_ActionId: a83d5abd-b9b7-442b-8b36-3a024d03ffa0
-    m_ActionName: 'Player/Jump[/Keyboard/space]'
   - m_PersistentCalls:
       m_Calls:
       - m_Target: {fileID: 1743001443084913523}
