@@ -1,0 +1,67 @@
+using UnityEngine;
+using System.Collections.Generic;
+
+public class GridHighlighter : MonoBehaviour
+{
+    // Префаб, который будет использоваться для подсветки (например, полупрозрачный квадрат)
+    [SerializeField] private GameObject highlightPrefab;
+    private List<GameObject> activeHighlights = new List<GameObject>();
+
+    // Статическая ссылка для удобства доступа
+    public static GridHighlighter Instance;
+
+    void Awake()
+    {
+        if (Instance == null) Instance = this;
+        else Destroy(gameObject);
+    }
+
+    // 1. Очистка всей подсветки
+    public void ClearHighlights()
+    {
+        foreach (GameObject highlight in activeHighlights)
+        {
+            Destroy(highlight);
+        }
+        activeHighlights.Clear();
+    }
+
+    // 2. Отображение разрешенных ходов
+    public void ShowAllowedMoves(Unit unit)
+    {
+        if (ChessGrid.Instance == null || ChessRulesManager.Instance == null || highlightPrefab == null) return;
+        
+        ClearHighlights();
+        
+        // Получаем текущую позицию юнита в координатах сетки
+        Vector2Int currentPos = ChessGrid.Instance.WorldToGridCoords(unit.transform.position);
+        ChessUnitType type = unit.chessType;
+        bool isFirstMove = unit.isFirstMove;
+        
+        // Перебираем все возможные клетки на доске, используя width и height из ChessGrid
+        // Здесь мы используем width и height, как определено в вашем ChessGrid.cs
+        for (int x = 0; x < ChessGrid.Instance.width; x++)
+        {
+            for (int y = 0; y < ChessGrid.Instance.height; y++)
+            {
+                Vector2Int targetPos = new Vector2Int(x, y);
+
+                // Нет смысла подсвечивать клетку, на которой мы стоим
+                if (currentPos == targetPos) continue; 
+
+                // Проверяем, легален ли ход на эту клетку
+                if (ChessRulesManager.Instance.IsMoveValid(type, currentPos, targetPos, isFirstMove))
+                {
+                    // Ход легален, создаем объект подсветки
+                    Vector3 worldPos = ChessGrid.Instance.GridToWorldPosition(x, y);
+                    
+                    // Немного поднимаем подсветку над сеткой (например, на 0.01)
+                    worldPos.y += 0.01f; 
+                    
+                    GameObject highlight = Instantiate(highlightPrefab, worldPos, Quaternion.identity, this.transform);
+                    activeHighlights.Add(highlight);
+                }
+            }
+        }
+    }
+}

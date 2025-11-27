@@ -682,14 +682,18 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::Unit
   cameraAttachPoint: {fileID: 6756655423263144189}
   owner: 0
+  chessType: 0
+  currentGridPosition: {x: 0, y: 0}
+  isFirstMove: 1
   health: 100
   damage: 20
-  attackRange: 10
   moveSpeed: 5
   jumpForce: 5
   gravity: -9.81
   mouseSensitivity: 0.1
   maxVerticalAngle: 80
+  ruleIntegrityPoints: 100
+  integrityCostPerSecond: 10
 --- !u!114 &5334869958312095863
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -743,22 +747,6 @@ MonoBehaviour:
         m_CallState: 2
     m_ActionId: 5db111e3-ab07-4c8f-afd7-1dbd8ab5b1f9
     m_ActionName: 'Player/Move[/Keyboard/w,/Keyboard/s,/Keyboard/a,/Keyboard/d]'
-  - m_PersistentCalls:
-      m_Calls:
-      - m_Target: {fileID: 1282325764766409393}
-        m_TargetAssemblyTypeName: Unit, Assembly-CSharp
-        m_MethodName: OnJump
-        m_Mode: 0
-        m_Arguments:
-          m_ObjectArgument: {fileID: 0}
-          m_ObjectArgumentAssemblyTypeName: UnityEngine.Object, UnityEngine
-          m_IntArgument: 0
-          m_FloatArgument: 0
-          m_StringArgument: 
-          m_BoolArgument: 0
-        m_CallState: 2
-    m_ActionId: a83d5abd-b9b7-442b-8b36-3a024d03ffa0
-    m_ActionName: 'Player/Jump[/Keyboard/space]'
   - m_PersistentCalls:
       m_Calls:
       - m_Target: {fileID: 1282325764766409393}
@@ -3227,6 +3215,7 @@ Transform:
   - {fileID: 6138056485246890121}
   - {fileID: 3827007842604575849}
   - {fileID: 3957640048035048890}
+  - {fileID: 5670093940183820978}
   m_Father: {fileID: 4928203256916779541}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &7508158434140150200
@@ -3547,6 +3536,51 @@ Transform:
   - {fileID: 5344256491979086957}
   m_Father: {fileID: 710223257247188184}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &8713561717228658637
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 5670093940183820978}
+  - component: {fileID: 5235137025088885985}
+  m_Layer: 3
+  m_Name: Weapon
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &5670093940183820978
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8713561717228658637}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0.00013138817, y: -0.0028767686, z: -0.045624387, w: 0.99895453}
+  m_LocalPosition: {x: 0.046, y: -0.061, z: 0.389}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children:
+  - {fileID: 4273809721562520984}
+  m_Father: {fileID: 5701833480730758772}
+  m_LocalEulerAnglesHint: {x: 0, y: -0.33, z: -5.23}
+--- !u!114 &5235137025088885985
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8713561717228658637}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6a3cec6d6f9c75347ac3e801bc7881af, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::WeaponCollider
 --- !u!1 &8783865537726101180
 GameObject:
   m_ObjectHideFlags: 0
@@ -3704,3 +3738,65 @@ Transform:
   - {fileID: 1314863355448459539}
   m_Father: {fileID: 4510881900941500774}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1001 &1784979786451050753
+PrefabInstance:
+  m_ObjectHideFlags: 0
+  serializedVersion: 2
+  m_Modification:
+    serializedVersion: 3
+    m_TransformParent: {fileID: 5670093940183820978}
+    m_Modifications:
+    - target: {fileID: 2560888907989433497, guid: 71e3486f031269245833f5edcbccc01a, type: 3}
+      propertyPath: m_LocalPosition.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 2560888907989433497, guid: 71e3486f031269245833f5edcbccc01a, type: 3}
+      propertyPath: m_LocalPosition.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 2560888907989433497, guid: 71e3486f031269245833f5edcbccc01a, type: 3}
+      propertyPath: m_LocalPosition.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 2560888907989433497, guid: 71e3486f031269245833f5edcbccc01a, type: 3}
+      propertyPath: m_LocalRotation.w
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 2560888907989433497, guid: 71e3486f031269245833f5edcbccc01a, type: 3}
+      propertyPath: m_LocalRotation.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 2560888907989433497, guid: 71e3486f031269245833f5edcbccc01a, type: 3}
+      propertyPath: m_LocalRotation.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 2560888907989433497, guid: 71e3486f031269245833f5edcbccc01a, type: 3}
+      propertyPath: m_LocalRotation.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 2560888907989433497, guid: 71e3486f031269245833f5edcbccc01a, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 2560888907989433497, guid: 71e3486f031269245833f5edcbccc01a, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 2560888907989433497, guid: 71e3486f031269245833f5edcbccc01a, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 2936850844206949923, guid: 71e3486f031269245833f5edcbccc01a, type: 3}
+      propertyPath: m_Name
+      value: Sword
+      objectReference: {fileID: 0}
+    m_RemovedComponents: []
+    m_RemovedGameObjects: []
+    m_AddedGameObjects: []
+    m_AddedComponents: []
+  m_SourcePrefab: {fileID: 100100000, guid: 71e3486f031269245833f5edcbccc01a, type: 3}
+--- !u!4 &4273809721562520984 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: 2560888907989433497, guid: 71e3486f031269245833f5edcbccc01a, type: 3}
+  m_PrefabInstance: {fileID: 1784979786451050753}
+  m_PrefabAsset: {fileID: 0}
