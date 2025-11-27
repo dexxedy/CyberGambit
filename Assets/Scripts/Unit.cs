@@ -21,6 +21,7 @@ public class Unit : MonoBehaviour
     [SerializeField] private float gravity = -9.81f;
     [SerializeField] private float mouseSensitivity = 0.1f;
     [SerializeField] private float maxVerticalAngle = 80f;
+    [SerializeField] private bool isKing = false;
 
     [Header("Rule Integrity")]
     [SerializeField] public float ruleIntegrityPoints = 100f; // Начальный запас очков целостности
@@ -102,6 +103,7 @@ public class Unit : MonoBehaviour
 
     void Update()
     {
+        if (GameManager.Instance != null && GameManager.Instance.IsPaused()) return;
         isGrounded = controller.isGrounded;
         if (isGrounded && playerVelocity.y < 0)
         {
@@ -185,6 +187,11 @@ public class Unit : MonoBehaviour
             // Вызываем ForceSwitchToTacticalMode перед Destroy
             CameraManager.Instance.ForceSwitchToTacticalMode();
             isControlled = false;
+        }
+        if (isKing)
+        {
+            // Если умер этот юнит, значит его владелец (owner) проиграл
+            GameManager.Instance.EndGame(this.owner);
         }
         Destroy(gameObject);
     }

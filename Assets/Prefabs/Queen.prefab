@@ -2407,7 +2407,7 @@ MonoBehaviour:
   owner: 0
   chessType: 3
   currentGridPosition: {x: 0, y: 0}
-  isFirstMove: 1
+  isFirstMove: 0
   health: 100
   damage: 20
   moveSpeed: 5
@@ -2415,6 +2415,7 @@ MonoBehaviour:
   gravity: -9.81
   mouseSensitivity: 0.1
   maxVerticalAngle: 80
+  isKing: 0
   ruleIntegrityPoints: 100
   integrityCostPerSecond: 5
 --- !u!114 &2140434537186029957

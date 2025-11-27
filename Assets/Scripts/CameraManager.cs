@@ -29,8 +29,9 @@ public class CameraManager : MonoBehaviour
     [SerializeField] private TextMeshProUGUI turnText;
     private Unit currentUnit; // Текущий выбранный юнит
     private bool isActionMode = false; // Флаг режима (false - тактический, true - экшен)
-    private float actionTime = 50f; // 5 секунд на ход
+    private float actionTime = 5f; // 5 секунд на ход
     private float remainingTime; // Остаток времени
+    private bool isGameEnded = false;
 
     void Awake()
     {
@@ -55,6 +56,16 @@ public class CameraManager : MonoBehaviour
 
     void Update()
     {
+        if (isGameEnded) return;
+        if (Keyboard.current.escapeKey.wasPressedThisFrame)
+        {
+            if (GameManager.Instance.IsPaused())
+                GameManager.Instance.ResumeGame();   // если уже на паузе — снимаем её
+            else
+                GameManager.Instance.PauseGame();    // если играем — ставим на паузу
+
+            return; // чтобы дальше ничего не обрабатывалось в этом кадре
+        }
         if (isActionMode)
         {
             if (timerText != null)
@@ -71,7 +82,7 @@ public class CameraManager : MonoBehaviour
                 healthText.text = $"HP: {currentUnit.GetHealth()}"; // Используем GetHealth()
             }
 
-            if (Keyboard.current.escapeKey.wasPressedThisFrame)
+            if (Keyboard.current.backquoteKey.wasPressedThisFrame)
             {
                 StopAllCoroutines();
                 SwitchToTacticalMode();
@@ -267,4 +278,13 @@ public class CameraManager : MonoBehaviour
 
         tacticalCamera.transform.position = pos;
     }
+    public void OnGameOver()
+    {
+        StopAllCoroutines(); // Останавливаем таймеры
+        isGameEnded = true; // Блокируем Update
+        // Гарантируем, что курсор свободен
+        Cursor.lockState = CursorLockMode.None;
+        Cursor.visible = true;
+    }
+    public bool IsActionMode() => isActionMode;
 }
