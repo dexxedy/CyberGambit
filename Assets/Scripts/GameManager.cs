@@ -113,6 +113,23 @@ public class GameManager : MonoBehaviour
     {
         if (isGameOver) return;
         currentPlayer = (currentPlayer == Player.Player1) ? Player.Player2 : Player.Player1;
+        
+        // Обновляем эффекты способностей всех юнитов при смене хода
+        Unit[] allUnits = FindObjectsByType<Unit>(FindObjectsSortMode.None);
+        foreach (Unit unit in allUnits)
+        {
+            if (unit != null)
+            {
+                unit.UpdateAbilityEffects();
+            }
+        }
+        
+        // Уведомляем AbilitySystem о смене хода для обновления КД
+        if (AbilitySystem.Instance != null)
+        {
+            AbilitySystem.Instance.OnTurnSwitch();
+        }
+        
         Debug.Log($"Ход перешёл к {currentPlayer}");
     }
     public bool IsPaused() => isPaused;

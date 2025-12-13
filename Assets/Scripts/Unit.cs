@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
+using System.Collections;
 
 public class Unit : MonoBehaviour
 {
@@ -13,6 +14,7 @@ public class Unit : MonoBehaviour
     
 
     [SerializeField] private int health = 100;
+    [SerializeField] private int maxHealth = 100;   // Максимальное здоровье (для хилла)
     [SerializeField] private int damage = 20;
 
     private CharacterController controller;
@@ -27,6 +29,16 @@ public class Unit : MonoBehaviour
     [SerializeField] public float ruleIntegrityPoints = 100f; // Начальный запас очков целостности
     [SerializeField] private float integrityCostPerSecond = 5f;
     
+    [Header("QTE & Combat")]
+    private bool isBlocking = false; // Флаг блокирования (снижает входящий урон)
+    
+    [Header("Ability Effects")]
+    private bool hasReflectionActive = false;        // Слон - отражение урона
+    private bool hasDamageReduction = false;         // Ладья - снижение урона на 50%
+    private float damageMultiplier = 1.0f;          // Ферзь - увеличение урона (+20% = 1.2)
+    private int reflectionTurnsRemaining = 0;        // Сколько ходов осталось эффекту отражения
+    private int damageReductionTurnsRemaining = 0;   // Сколько ходов осталось эффекту снижения урона
+    private int damageBoostTurnsRemaining = 0;       // Сколько ходов осталось эффекту увеличения урона
 
     private Vector3 playerVelocity;
     private Vector2Int startGridPosition;
@@ -170,9 +182,42 @@ public class Unit : MonoBehaviour
         }
     }
 
-    public void TakeDamage(int amount)
+    /// <summary>
+    /// Наносит урон юниту. Учитывает блокирование, снижение урона и отражение.
+    /// </summary>
+    /// <param name="amount">Количество урона</param>
+    /// <param name="attacker">Юнит, который наносит урон (для отражения)</param>
+    public void TakeDamage(int amount, Unit attacker = null)
     {
+        int originalAmount = amount;
+        
+        // Если юнит блокирует, урон полностью блокируется (0 урона)
+        if (isBlocking)
+        {
+            amount = 0; // Полная блокировка урона
+            Debug.Log($"{chessType} заблокировал атаку! Урон: {originalAmount} -> {amount}");
+        }
+        
+        // ЛАДЬЯ: Снижение урона на 50%
+        if (hasDamageReduction)
+        {
+            int beforeReduction = amount;
+            amount = Mathf.RoundToInt(amount * 0.5f);
+            Debug.Log($"{chessType} (Ладья): Снижение урона на 50%! Урон: {beforeReduction} -> {amount}");
+        }
+        
+        // Наносим урон
         health -= amount;
+        Debug.Log($"{chessType} получил {amount} урона (исходный: {originalAmount}). HP: {health}/{maxHealth}");
+        
+        // СЛОН: Отражение урона обратно атакующему (если есть атакующий и урон был нанесен)
+        if (hasReflectionActive && attacker != null && amount > 0)
+        {
+            // Отправляем урон обратно атакующему (отражаем уже уменьшенный урон)
+            Debug.Log($"{chessType} (Слон) отражает {amount} урона обратно {attacker.chessType}!");
+            attacker.TakeDamage(amount, this);
+        }
+        
         if (health <= 0)
         {
             Die();
@@ -319,9 +364,156 @@ public class Unit : MonoBehaviour
     {
         return health;
     }
+    
+    /// <summary>
+    /// Возвращает максимальное здоровье юнита (для хилла)
+    /// </summary>
+    public int GetMaxHealth()
+    {
+        return maxHealth;
+    }
+    
     public float GetRuleIntegrityPoints()
     {
     return ruleIntegrityPoints;
     }
     public int Damage { get { return damage; } }
+    
+    /// <summary>
+    /// Проверяет, контролируется ли юнит в данный момент
+    /// </summary>
+    public bool IsControlled()
+    {
+        return isControlled;
+    }
+    
+    // ========== СПОСОБНОСТИ: Методы для работы с эффектами ==========
+    
+    /// <summary>
+    /// Исцеляет юнита на указанное количество HP
+    /// </summary>
+    /// <param name="amount">Количество HP для восстановления</param>
+    public void Heal(int amount)
+    {
+        health = Mathf.Min(health + amount, maxHealth);
+        Debug.Log($"{chessType} исцелен на {amount} HP. Текущее HP: {health}/{maxHealth}");
+    }
+    
+    /// <summary>
+    /// Устанавливает эффект отражения урона (Слон)
+    /// </summary>
+    /// <param name="active">Активен ли эффект</param>
+    /// <param name="turns">На сколько ходов действует эффект</param>
+    public void SetReflectionActive(bool active, int turns)
+    {
+        hasReflectionActive = active;
+        reflectionTurnsRemaining = turns;
+    }
+    
+    /// <summary>
+    /// Устанавливает эффект снижения урона (Ладья)
+    /// </summary>
+    /// <param name="active">Активен ли эффект</param>
+    /// <param name="turns">На сколько ходов действует эффект</param>
+    public void SetDamageReduction(bool active, int turns)
+    {
+        hasDamageReduction = active;
+        damageReductionTurnsRemaining = turns;
+    }
+    
+    /// <summary>
+    /// Устанавливает множитель урона (Ферзь)
+    /// </summary>
+    /// <param name="multiplier">Множитель урона (1.0 = обычный, 1.2 = +20%)</param>
+    /// <param name="turns">На сколько ходов действует эффект</param>
+    public void SetDamageMultiplier(float multiplier, int turns)
+    {
+        damageMultiplier = multiplier;
+        damageBoostTurnsRemaining = turns;
+    }
+    
+    /// <summary>
+    /// Возвращает текущий множитель урона (для WeaponCollider)
+    /// </summary>
+    public float GetDamageMultiplier()
+    {
+        return damageMultiplier;
+    }
+    
+    /// <summary>
+    /// Обновляет эффекты способностей при смене хода (вызывается из GameManager)
+    /// Эффекты отключаются в конце хода, в котором они должны действовать.
+    /// </summary>
+    public void UpdateAbilityEffects()
+    {
+        // Обновляем отражение (Слон) - эффект действует весь ход врага
+        if (reflectionTurnsRemaining > 0)
+        {
+            reflectionTurnsRemaining--;
+            if (reflectionTurnsRemaining <= 0)
+            {
+                hasReflectionActive = false;
+                // Обновляем визуальный индикатор
+                AbilityVisualEffects visualEffects = GetComponent<AbilityVisualEffects>();
+                if (visualEffects != null)
+                {
+                    visualEffects.PlayBishopReflectionEffect(false);
+                }
+                Debug.Log($"{chessType}: Эффект отражения закончился");
+            }
+        }
+        
+        // Обновляем снижение урона (Ладья) - эффект действует весь ход врага
+        if (damageReductionTurnsRemaining > 0)
+        {
+            damageReductionTurnsRemaining--;
+            if (damageReductionTurnsRemaining <= 0)
+            {
+                hasDamageReduction = false;
+                // Обновляем визуальный индикатор
+                AbilityVisualEffects visualEffects = GetComponent<AbilityVisualEffects>();
+                if (visualEffects != null)
+                {
+                    visualEffects.PlayGuardianShieldEffect(false);
+                }
+                Debug.Log($"{chessType}: Эффект снижения урона закончился");
+            }
+        }
+        
+        // Обновляем увеличение урона (Ферзь) - эффект действует в текущем ходу
+        if (damageBoostTurnsRemaining > 0)
+        {
+            damageBoostTurnsRemaining--;
+            if (damageBoostTurnsRemaining <= 0)
+            {
+                damageMultiplier = 1.0f;
+                // Обновляем визуальный индикатор
+                AbilityVisualEffects visualEffects = GetComponent<AbilityVisualEffects>();
+                if (visualEffects != null)
+                {
+                    visualEffects.PlayQueenBoostEffect(false);
+                }
+                Debug.Log($"{chessType}: Эффект увеличения урона закончился");
+            }
+        }
+    }
+    
+    // ========== QTE СИСТЕМА: Методы для работы с блокированием ==========
+    
+    /// <summary>
+    /// Устанавливает состояние блокирования юнита.
+    /// Используется в QTE системе при успешном блоке.
+    /// </summary>
+    /// <param name="blocking">true - юнит блокирует, false - не блокирует</param>
+    public void SetBlocking(bool blocking)
+    {
+        isBlocking = blocking;
+        // Здесь можно добавить визуальный эффект блокирования (например, свечение щита)
+    }
+    
+    /// <summary>
+    /// Проверяет, блокирует ли юнит в данный момент.
+    /// </summary>
+    /// <returns>true если юнит блокирует, false если нет</returns>
+    public bool IsBlocking() => isBlocking;
 }

@@ -52,11 +52,14 @@ public class WeaponCollider : MonoBehaviour
         // 3. ПРОВЕРКА ЦЕЛИ: Убеждаемся, что цель принадлежит противнику.
         if (target != null && target != ownerUnit && target.owner != ownerUnit.owner)
         {
-            // Наносим урон
-            target.TakeDamage(ownerUnit.Damage);
+            // Вычисляем финальный урон с учетом множителя способности (Ферзь)
+            int finalDamage = Mathf.RoundToInt(ownerUnit.Damage * ownerUnit.GetDamageMultiplier());
+            
+            // Наносим урон цели, передавая атакующего для отражения урона (Слон)
+            target.TakeDamage(finalDamage, ownerUnit);
             
             // !!! ИСПРАВЛЕНИЕ: Используем геттер target.GetHealth() вместо прямого доступа к полю health
-            Debug.Log($"Melee hit on {target.gameObject.name} for {ownerUnit.Damage} damage (ALWAYS ON). Target HP: {target.GetHealth()}");
+            Debug.Log($"Melee hit on {target.gameObject.name} for {finalDamage} damage (Base: {ownerUnit.Damage}, Multiplier: {ownerUnit.GetDamageMultiplier():F2}x). Target HP: {target.GetHealth()}");
             
             // Запоминаем цель, чтобы не ударить дважды
             targetsHitInContact.Add(other);

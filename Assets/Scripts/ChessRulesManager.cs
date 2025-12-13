@@ -89,7 +89,7 @@ public class ChessRulesManager : MonoBehaviour
                 if (isFirstMove && dx == 2 && dy == 0) return true;
                 return false;
 
-            case ChessUnitType.Horse: // Конь (2 в одну сторону, 1 в другую)
+            case ChessUnitType.Horse: // Конь (2 в одну сторону, 1 в другую) - буква Г
                 return (dx == 1 && dy == 2) || (dx == 2 && dy == 1);
 
             case ChessUnitType.Guardian: // Ладья (Только вертикально или горизонтально)
@@ -107,5 +107,32 @@ public class ChessRulesManager : MonoBehaviour
         }
 
         return false;
+    }
+    
+    /// <summary>
+    /// Получает все возможные ходы для коня из указанной позиции (все 8 позиций буквой Г)
+    /// </summary>
+    /// <param name="start">Начальная позиция коня</param>
+    /// <returns>Список всех возможных позиций для хода коня</returns>
+    public List<Vector2Int> GetHorsePossibleMoves(Vector2Int start)
+    {
+        List<Vector2Int> possibleMoves = new List<Vector2Int>();
+        
+        // Все 8 возможных ходов коня (буквой Г)
+        int[] dx = { 2, 2, -2, -2, 1, 1, -1, -1 };
+        int[] dy = { 1, -1, 1, -1, 2, -2, 2, -2 };
+        
+        for (int i = 0; i < 8; i++)
+        {
+            Vector2Int targetPos = new Vector2Int(start.x + dx[i], start.y + dy[i]);
+            
+            // Проверяем, что позиция в пределах доски
+            if (ChessGrid.Instance != null && ChessGrid.Instance.IsValidCoord(targetPos.x, targetPos.y))
+            {
+                possibleMoves.Add(targetPos);
+            }
+        }
+        
+        return possibleMoves;
     }
 }

@@ -1612,6 +1612,7 @@ GameObject:
   - component: {fileID: -729475712150398451}
   - component: {fileID: 84557444071351209}
   - component: {fileID: 2055865153620882460}
+  - component: {fileID: -8472635557590319203}
   m_Layer: 3
   m_Name: Bishop
   m_TagString: Untagged
@@ -1725,6 +1726,7 @@ MonoBehaviour:
   currentGridPosition: {x: 0, y: 0}
   isFirstMove: 0
   health: 100
+  maxHealth: 100
   damage: 20
   moveSpeed: 5
   jumpForce: 5
@@ -1828,6 +1830,18 @@ MonoBehaviour:
   m_DefaultActionMap: Player
   m_SplitScreenIndex: -1
   m_Camera: {fileID: 0}
+--- !u!114 &-8472635557590319203
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3238092877526122805}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 02b2fae23be4a6f4a957d7cc302dab68, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::UnitAbilities
 --- !u!1 &3512513764061555806
 GameObject:
   m_ObjectHideFlags: 0

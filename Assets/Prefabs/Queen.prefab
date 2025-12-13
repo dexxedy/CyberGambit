@@ -2318,6 +2318,7 @@ GameObject:
   - component: {fileID: -5182104541120588392}
   - component: {fileID: 2140434537186029957}
   - component: {fileID: -773611477866038272}
+  - component: {fileID: 5770663237386461304}
   m_Layer: 3
   m_Name: Queen
   m_TagString: Untagged
@@ -2409,6 +2410,7 @@ MonoBehaviour:
   currentGridPosition: {x: 0, y: 0}
   isFirstMove: 0
   health: 100
+  maxHealth: 100
   damage: 20
   moveSpeed: 5
   jumpForce: 5
@@ -2534,6 +2536,18 @@ Animator:
   m_AllowConstantClipSamplingOptimization: 1
   m_KeepAnimatorStateOnDisable: 0
   m_WriteDefaultValuesOnDisable: 0
+--- !u!114 &5770663237386461304
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6705892698593102168}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 02b2fae23be4a6f4a957d7cc302dab68, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::UnitAbilities
 --- !u!1 &6726526209471721873
 GameObject:
   m_ObjectHideFlags: 0

@@ -158,6 +158,12 @@ public class CameraManager : MonoBehaviour
 
     private void SwitchToTacticalMode()
     {
+        // Отменяем QTE, если он активен (например, если закончился таймер хода)
+        if (QTESystem.Instance != null && QTESystem.Instance.IsQTEActive())
+        {
+            QTESystem.Instance.CancelQTE();
+        }
+        
         if (currentUnit != null)
         {
             currentUnit.ResetAnimation();
@@ -212,6 +218,12 @@ public class CameraManager : MonoBehaviour
     }
     public void ForceSwitchToTacticalMode()
     {
+        // Отменяем QTE, если он активен
+        if (QTESystem.Instance != null && QTESystem.Instance.IsQTEActive())
+        {
+            QTESystem.Instance.CancelQTE();
+        }
+        
         // Сбрасываем таймер и сразу переходим в тактический режим
         StopAllCoroutines(); 
         SwitchToTacticalMode();
@@ -286,5 +298,33 @@ public class CameraManager : MonoBehaviour
         Cursor.lockState = CursorLockMode.None;
         Cursor.visible = true;
     }
+    
+    /// <summary>
+    /// Возвращает текущий контролируемый юнит (для системы QTE и зон угрозы).
+    /// </summary>
+    /// <returns>Текущий контролируемый юнит или null, если никого не контролируют</returns>
+    public Unit GetCurrentControlledUnit()
+    {
+        return currentUnit;
+    }
+    
+    /// <summary>
+    /// Возвращает тактическую камеру (для способностей, требующих выбора цели)
+    /// </summary>
+    /// <returns>Тактическая камера</returns>
+    public Camera GetTacticalCamera()
+    {
+        return tacticalCamera;
+    }
+    
+    /// <summary>
+    /// Возвращает экшен-камеру (для способностей в экшен-режиме)
+    /// </summary>
+    /// <returns>Экшен-камера</returns>
+    public Camera GetActionCamera()
+    {
+        return actionCamera;
+    }
+    
     public bool IsActionMode() => isActionMode;
 }
