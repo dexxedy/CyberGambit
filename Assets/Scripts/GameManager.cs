@@ -1,6 +1,7 @@
 using UnityEngine;
 using TMPro;
 using UnityEngine.SceneManagement;
+using UnityEngine.UI;
 
 public enum Player { Player1, Player2 }
 
@@ -13,6 +14,13 @@ public class GameManager : MonoBehaviour
     [SerializeField] private TextMeshProUGUI winnerText; // Ссылка на текст
     [Header("UI Pause")] // НОВОЕ: Пауза-меню
     [SerializeField] private GameObject pausePanel;
+    [Header("Settings Panel")]
+    [SerializeField] private GameObject settingsPanel; // Панель настроек в паузе
+    [Header("Pause Menu Buttons")]
+    [SerializeField] private GameObject pauseMenuButtons; // Родительский объект со всеми кнопками паузы
+    [Header("Volume Settings")]
+    [SerializeField] private Slider musicVolumeSlider; // Слайдер громкости музыки
+    [SerializeField] private Slider sfxVolumeSlider; // Слайдер громкости звуковых эффектов
 
     private bool isGameOver = false; // Флаг, чтобы остановить игру
     private bool isPaused = false;
@@ -43,16 +51,33 @@ public class GameManager : MonoBehaviour
 
         // Определяем победителя
         string resultMessage = "";
+        Player winner = Player.Player1;
         if (loser == Player.Player1)
         {
             resultMessage = "ПОБЕДА ИГРОКА 2!";
+            winner = Player.Player2;
         }
         else
         {
             resultMessage = "ПОБЕДА ИГРОКА 1!";
+            winner = Player.Player1;
         }
 
         if (winnerText != null) winnerText.text = resultMessage;
+        
+        // Воспроизводим музыку победы/поражения
+        if (AudioManager.Instance != null)
+        {
+            // Определяем, кто выиграл (текущий игрок или противник)
+            if (winner == currentPlayer)
+            {
+                AudioManager.Instance.PlayVictoryMusic();
+            }
+            else
+            {
+                AudioManager.Instance.PlayDefeatMusic();
+            }
+        }
         
         if (CameraManager.Instance != null)
         {
@@ -65,12 +90,14 @@ public class GameManager : MonoBehaviour
     // Метод для кнопки "В меню"
     public void LoadMainMenu()
     {
+        if (AudioManager.Instance != null) AudioManager.Instance.PlayButtonClick();
         Time.timeScale = 1f; // Возвращаем время в норму перед выходом
         SceneManager.LoadScene("MainMenu");
     }
     // НОВОЕ: Метод рестарта (для кнопки "Рестарт")
     public void RestartGame()
     {
+        if (AudioManager.Instance != null) AudioManager.Instance.PlayButtonClick();
         Time.timeScale = 1f;
         SceneManager.LoadScene(SceneManager.GetActiveScene().name);
     }
@@ -85,12 +112,25 @@ public class GameManager : MonoBehaviour
         // Разблокируем курсор для UI
         Cursor.lockState = CursorLockMode.None;
         Cursor.visible = true;
+        
+        // Закрываем панель настроек при открытии паузы (если она была открыта)
+        if (settingsPanel != null)
+        {
+            settingsPanel.SetActive(false);
+        }
+        
+        // Убеждаемся, что кнопки паузы видны
+        if (pauseMenuButtons != null)
+        {
+            pauseMenuButtons.SetActive(true);
+        }
     }
 
     // НОВОЕ: Метод продолжения (для кнопки "Продолжить")
     public void ResumeGame()
     {
         if (!isPaused) return;
+        if (AudioManager.Instance != null) AudioManager.Instance.PlayButtonClick();
         isPaused = false;
         if (pausePanel != null) pausePanel.SetActive(false);
         Time.timeScale = 1f;
@@ -133,4 +173,99 @@ public class GameManager : MonoBehaviour
         Debug.Log($"Ход перешёл к {currentPlayer}");
     }
     public bool IsPaused() => isPaused;
+    
+    /// <summary>
+    /// Открывает панель настроек в паузе
+    /// </summary>
+    public void OpenSettings()
+    {
+        if (AudioManager.Instance != null) AudioManager.Instance.PlayButtonClick();
+        if (settingsPanel != null)
+        {
+            settingsPanel.SetActive(true);
+            // Инициализируем слайдеры при открытии панели настроек
+            InitializeVolumeSliders();
+        }
+        
+        // Скрываем кнопки паузы
+        if (pauseMenuButtons != null)
+        {
+            pauseMenuButtons.SetActive(false);
+        }
+    }
+    
+    /// <summary>
+    /// Закрывает панель настроек в паузе
+    /// </summary>
+    public void CloseSettings()
+    {
+        if (AudioManager.Instance != null) AudioManager.Instance.PlayButtonClick();
+        if (settingsPanel != null)
+        {
+            settingsPanel.SetActive(false);
+        }
+        
+        // Показываем кнопки паузы обратно
+        if (pauseMenuButtons != null)
+        {
+            pauseMenuButtons.SetActive(true);
+        }
+    }
+    
+    /// <summary>
+    /// Инициализирует слайдеры громкости текущими значениями из AudioManager
+    /// </summary>
+    private void InitializeVolumeSliders()
+    {
+        if (AudioManager.Instance != null)
+        {
+            if (musicVolumeSlider != null)
+            {
+                musicVolumeSlider.value = AudioManager.Instance.GetMusicVolume();
+                musicVolumeSlider.onValueChanged.RemoveAllListeners();
+                musicVolumeSlider.onValueChanged.AddListener(OnMusicVolumeChanged);
+            }
+            
+            if (sfxVolumeSlider != null)
+            {
+                sfxVolumeSlider.value = AudioManager.Instance.GetSFXVolume();
+                sfxVolumeSlider.onValueChanged.RemoveAllListeners();
+                sfxVolumeSlider.onValueChanged.AddListener(OnSFXVolumeChanged);
+            }
+        }
+    }
+    
+    /// <summary>
+    /// Применяет изменения громкости (вызывается кнопкой "Применить" в паузе)
+    /// </summary>
+    public void ApplySettings()
+    {
+        if (AudioManager.Instance != null) AudioManager.Instance.PlayButtonClick();
+        
+        // Настройки уже применены через OnMusicVolumeChanged и OnSFXVolumeChanged
+        // Просто закрываем панель
+        CloseSettings();
+    }
+    
+    /// <summary>
+    /// Вызывается при изменении громкости музыки
+    /// </summary>
+    public void OnMusicVolumeChanged(float value)
+    {
+        if (AudioManager.Instance != null)
+        {
+            AudioManager.Instance.SetMusicVolumeWithSave(value);
+        }
+    }
+    
+    /// <summary>
+    /// Вызывается при изменении громкости звуковых эффектов
+    /// </summary>
+    public void OnSFXVolumeChanged(float value)
+    {
+        if (AudioManager.Instance != null)
+        {
+            AudioManager.Instance.SetSFXVolumeWithSave(value);
+        }
+    }
 }

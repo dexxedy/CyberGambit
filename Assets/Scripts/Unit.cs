@@ -19,18 +19,35 @@ public class Unit : MonoBehaviour
 
     private CharacterController controller;
     [SerializeField] private float moveSpeed = 5f;
-    [SerializeField] private float jumpForce = 5f;
     [SerializeField] private float gravity = -9.81f;
     [SerializeField] private float mouseSensitivity = 0.1f;
     [SerializeField] private float maxVerticalAngle = 80f;
     [SerializeField] private bool isKing = false;
+    
+    [Header("Animation")]
+    [SerializeField] private float baseMoveSpeed = 5f; // Базовая скорость, для которой анимация настроена
+    [SerializeField] private float minAnimationSpeed = 0.6f; // Минимальная скорость анимации
+    [SerializeField] private float maxAnimationSpeed = 1.2f; // Максимальная скорость анимации
 
     [Header("Rule Integrity")]
     [SerializeField] public float ruleIntegrityPoints = 100f; // Начальный запас очков целостности
-    [SerializeField] private float integrityCostPerSecond = 5f;
+    [SerializeField] private float integrityCostPerCell = 10f; // Фиксированная стоимость за переход на невалидную клетку
     
     [Header("QTE & Combat")]
     private bool isBlocking = false; // Флаг блокирования (снижает входящий урон)
+    
+    [Header("Combat Sounds")]
+    [SerializeField] private AudioClip takeDamageSound; // Звук получения урона
+    [SerializeField] private AudioClip unitDeathSound; // Звук смерти юнита
+    
+    
+    [Header("Audio Source (Optional)")]
+    [SerializeField] private AudioSource unitAudioSource; // Можно назначить вручную в Inspector, или создастся автоматически
+    
+    [Header("Attack Settings")]
+    [SerializeField] private string attackStateName = "attack"; // Имя состояния атаки в Animator
+    [SerializeField] private float attackDamageStartTime = 0.2f; // Нормализованное время начала нанесения урона (0-1)
+    [SerializeField] private float attackDamageEndTime = 0.8f; // Нормализованное время конца нанесения урона (0-1)
     
     [Header("Ability Effects")]
     private bool hasReflectionActive = false;        // Слон - отражение урона
@@ -43,11 +60,11 @@ public class Unit : MonoBehaviour
     private Vector3 playerVelocity;
     private Vector2Int startGridPosition;
     private Vector2Int lastLegalGridPosition;
+    private Vector2Int lastCheckedGridPosition; // Последняя проверенная клетка для отслеживания переходов
     private float xRotation = 0f;
     private bool isGrounded;
     private Vector2 moveInput;
     private Vector2 lookInput;
-    private bool jumpInput;
     private bool fireInput;
     private bool isControlled = false;
     
@@ -75,6 +92,61 @@ public class Unit : MonoBehaviour
         {
             SnapToGrid();
         }
+        
+        // Инициализируем AudioSource для звуков юнита
+        InitializeAudioSources();
+    }
+    
+    void Awake()
+    {
+        // Инициализируем AudioSource в Awake, чтобы он был готов до Start
+        InitializeAudioSources();
+    }
+    
+    void OnEnable()
+    {
+        // Убеждаемся, что AudioSource инициализирован при активации объекта
+        // Это решает проблему, когда объект не был выбран в сцене перед запуском
+        InitializeAudioSources();
+    }
+    
+    /// <summary>
+    /// Инициализирует AudioSource для звуков юнита (можно назначить вручную или создастся автоматически)
+    /// </summary>
+    private void InitializeAudioSources()
+    {
+        // Если AudioSource не назначен в Inspector, пытаемся найти или создать
+        if (unitAudioSource == null)
+        {
+            // Сначала пытаемся найти существующий AudioSource на объекте
+            unitAudioSource = GetComponent<AudioSource>();
+            
+            // Если AudioSource не найден, создаем новый
+            if (unitAudioSource == null)
+            {
+                unitAudioSource = gameObject.AddComponent<AudioSource>();
+            }
+        }
+        
+        // Всегда настраиваем AudioSource (даже если он был назначен вручную)
+        // Это гарантирует, что настройки правильные для всех экземпляров
+        if (unitAudioSource != null)
+        {
+            unitAudioSource.spatialBlend = 1f; // 3D звук
+            unitAudioSource.minDistance = 5f;
+            unitAudioSource.maxDistance = 15f;
+            unitAudioSource.priority = 100; // Средний приоритет
+            unitAudioSource.playOnAwake = false;
+            unitAudioSource.loop = false;
+            unitAudioSource.ignoreListenerPause = false; // Останавливается при паузе
+            unitAudioSource.enabled = true; // Убеждаемся, что включен
+            
+            // Убеждаемся, что GameObject активен
+            if (!unitAudioSource.gameObject.activeInHierarchy)
+            {
+                unitAudioSource.gameObject.SetActive(true);
+            }
+        }
     }
 
     public void OnMove(InputAction.CallbackContext context)
@@ -83,15 +155,6 @@ public class Unit : MonoBehaviour
         if (isControlled && moveInput != Vector2.zero)
         {
             //Debug.Log($"Unit {gameObject.name}: Move Input = {moveInput}");
-        }
-    }
-
-    public void OnJump(InputAction.CallbackContext context)
-    {
-        jumpInput = context.performed;
-        if (isControlled && jumpInput)
-        {
-            //Debug.Log($"Unit {gameObject.name}: Jump Input");
         }
     }
 
@@ -107,10 +170,6 @@ public class Unit : MonoBehaviour
     public void OnFire(InputAction.CallbackContext context)
     {
         fireInput = context.performed;
-        if (isControlled && fireInput)
-        {
-            Debug.Log($"Unit {gameObject.name}: Fire Input");
-        }
     }
 
     void Update()
@@ -140,17 +199,6 @@ public class Unit : MonoBehaviour
         Vector3 move = transform.right * moveInput.x + transform.forward * moveInput.y;
         move = move.normalized * moveSpeed;
         controller.Move(move * Time.deltaTime);
-        if (move.magnitude > 0)
-        {
-            Debug.Log($"Unit {gameObject.name}: Moving with velocity {move}");
-        }
-
-        if (jumpInput && isGrounded)
-        {
-            playerVelocity.y = Mathf.Sqrt(jumpForce * -2f * gravity);
-            jumpInput = false;
-            Debug.Log($"Unit {gameObject.name}: Jumping");
-        }
 
         float mouseY = lookInput.y * mouseSensitivity;
         xRotation -= mouseY;
@@ -169,6 +217,14 @@ public class Unit : MonoBehaviour
         {
             float speed = moveInput.magnitude;
             animator.SetFloat("Speed", speed);
+            
+            // Синхронизируем скорость анимации с реальной скоростью движения
+            if (baseMoveSpeed > 0)
+            {
+                float animationSpeedMultiplier = moveSpeed / baseMoveSpeed;
+                animationSpeedMultiplier = Mathf.Clamp(animationSpeedMultiplier, minAnimationSpeed, maxAnimationSpeed);
+                animator.speed = animationSpeedMultiplier;
+            }
         }
     }
 
@@ -176,10 +232,40 @@ public class Unit : MonoBehaviour
     {
         if (animator != null)
         {
-            // Запускаем триггер анимации.
-            // Коллизия (урон) будет активирована Событием Анимации в нужный момент.
+            // Запускаем триггер анимации
             animator.SetTrigger("Attack");
+            
+            // Очищаем список пораженных целей для новой атаки
+            WeaponCollider weaponCollider = GetComponentInChildren<WeaponCollider>();
+            if (weaponCollider != null)
+            {
+                weaponCollider.ClearHitTargets();
+            }
         }
+    }
+    
+    /// <summary>
+    /// Проверяет, атакует ли юнит в данный момент, проверяя состояние аниматора
+    /// </summary>
+    public bool IsAttacking()
+    {
+        if (animator == null) return false;
+        
+        // Проверяем, находится ли аниматор в состоянии атаки
+        AnimatorStateInfo stateInfo = animator.GetCurrentAnimatorStateInfo(0);
+        
+        // Проверяем по имени состояния
+        if (stateInfo.IsName(attackStateName))
+        {
+            // Проверяем нормализованное время анимации
+            // Урон наносится только в определенной части анимации (например, от 0.2 до 0.8)
+            float normalizedTime = stateInfo.normalizedTime % 1.0f;
+            bool inDamageWindow = normalizedTime >= attackDamageStartTime && normalizedTime <= attackDamageEndTime;
+            
+            return inDamageWindow;
+        }
+        
+        return false;
     }
 
     /// <summary>
@@ -195,26 +281,27 @@ public class Unit : MonoBehaviour
         if (isBlocking)
         {
             amount = 0; // Полная блокировка урона
-            Debug.Log($"{chessType} заблокировал атаку! Урон: {originalAmount} -> {amount}");
         }
         
         // ЛАДЬЯ: Снижение урона на 50%
         if (hasDamageReduction)
         {
-            int beforeReduction = amount;
             amount = Mathf.RoundToInt(amount * 0.5f);
-            Debug.Log($"{chessType} (Ладья): Снижение урона на 50%! Урон: {beforeReduction} -> {amount}");
         }
         
         // Наносим урон
         health -= amount;
-        Debug.Log($"{chessType} получил {amount} урона (исходный: {originalAmount}). HP: {health}/{maxHealth}");
+        
+        // Воспроизводим звук получения урона (только если урон был нанесен)
+        if (amount > 0)
+        {
+            PlayTakeDamageSound();
+        }
         
         // СЛОН: Отражение урона обратно атакующему (если есть атакующий и урон был нанесен)
         if (hasReflectionActive && attacker != null && amount > 0)
         {
             // Отправляем урон обратно атакующему (отражаем уже уменьшенный урон)
-            Debug.Log($"{chessType} (Слон) отражает {amount} урона обратно {attacker.chessType}!");
             attacker.TakeDamage(amount, this);
         }
         
@@ -226,7 +313,9 @@ public class Unit : MonoBehaviour
 
     private void Die()
     {
-        Debug.Log($"Unit {gameObject.name} died!");
+        // Воспроизводим звук смерти перед уничтожением
+        PlayDeathSound();
+        
         if (isControlled)
         {
             // Вызываем ForceSwitchToTacticalMode перед Destroy
@@ -238,6 +327,8 @@ public class Unit : MonoBehaviour
             // Если умер этот юнит, значит его владелец (owner) проиграл
             GameManager.Instance.EndGame(this.owner);
         }
+        
+        // Уничтожаем объект сразу, звук проиграется через PlayOneShot
         Destroy(gameObject);
     }
     public void SnapToGrid()
@@ -259,65 +350,70 @@ public class Unit : MonoBehaviour
     }
     private void HandleMovementCost()
     {
-        // Снимаем очки, только если юнит активно двигается и его движение НЕ легально
-        if (moveInput.magnitude > 0 && ChessGrid.Instance != null && ChessRulesManager.Instance != null)
+        if (ChessGrid.Instance == null || ChessRulesManager.Instance == null) return;
+        
+        // Обновляем текущую логическую позицию
+        currentGridPosition = ChessGrid.Instance.WorldToGridCoords(transform.position);
+        
+        // Проверяем, перешел ли юнит в другую клетку
+        if (currentGridPosition != lastCheckedGridPosition)
         {
-            // Обновляем текущую логическую позицию
-            currentGridPosition = ChessGrid.Instance.WorldToGridCoords(transform.position);
-
-            // Проверяем:
-            // 1. Юнит покинул стартовую клетку? (startGridPosition != currentGridPosition)
-            // 2. Текущее смещение с startGridPosition до currentGridPosition НЕ соответствует правилам фигуры?
+            // Юнит перешел в новую клетку - проверяем валидность перехода
+            bool isTransitionLegal = false;
             
-            bool isCurrentMoveLegal = false;
-            
-            // Если юнит находится на стартовой клетке, движение всегда легально.
-            if (startGridPosition == currentGridPosition)
+            // Если юнит находится на стартовой клетке - переход легален (не покинул стартовую позицию)
+            if (currentGridPosition == startGridPosition)
             {
-                isCurrentMoveLegal = true;
+                isTransitionLegal = true;
             }
             else
             {
-                // Проверяем, может ли фигура ТЕОРЕТИЧЕСКИ сделать такой ход (проверка паттерна/дальности)
-                isCurrentMoveLegal = ChessRulesManager.Instance.IsMoveValid(
-                    chessType, 
-                    startGridPosition, 
-                    currentGridPosition, 
+                // Юнит покинул стартовую клетку - проверяем валидность хода от startGridPosition к currentGridPosition
+                // Это проверяет, соответствует ли текущая позиция правилам движения фигуры
+                isTransitionLegal = ChessRulesManager.Instance.IsMoveValid(
+                    chessType,
+                    startGridPosition,
+                    currentGridPosition,
                     isFirstMove
                 );
             }
-
-            if (!isCurrentMoveLegal)
+            
+            // Если переход нелегален - снимаем фиксированное количество очков
+            if (!isTransitionLegal)
             {
-                // Движение является "свободным" (нелегальным), снимаем очки
-                ruleIntegrityPoints -= integrityCostPerSecond * Time.deltaTime;
+                ruleIntegrityPoints -= integrityCostPerCell;
                 ruleIntegrityPoints = Mathf.Max(0f, ruleIntegrityPoints);
                 
                 if (Debug.isDebugBuild)
                 {
-                    Debug.LogWarning($"❌ ILLEGAL MOVEMENT! {chessType}. Start: {ChessGrid.Instance.GridToChessNotation(startGridPosition.x, startGridPosition.y)} -> Current: {ChessGrid.Instance.GridToChessNotation(currentGridPosition.x, currentGridPosition.y)}. Deducting points.");
+                    Debug.LogWarning($"❌ ILLEGAL CELL TRANSITION! {chessType}. From: {ChessGrid.Instance.GridToChessNotation(lastCheckedGridPosition.x, lastCheckedGridPosition.y)} -> To: {ChessGrid.Instance.GridToChessNotation(currentGridPosition.x, currentGridPosition.y)}. Deducted {integrityCostPerCell} points.");
                 }
             }
-            else
-            {
-                // Debug.Log($"LEGAL. Integrity: {ruleIntegrityPoints:F1}");
-            }
+            
+            // Обновляем последнюю проверенную позицию
+            lastCheckedGridPosition = currentGridPosition;
         }
         
         // Проверка на смерть/штраф
         if (ruleIntegrityPoints <= 0)
         {
-            Debug.Log($"Unit {gameObject.name} исчерпал Rule Integrity Points и УМЕР!");
             Die();
         }
     }
 
     public void ResetAnimation()
     {
-    if (animator != null)
+        if (animator != null)
         {
             animator.SetFloat("Speed", 0f);
+            animator.speed = 1.0f; // Сбрасываем скорость анимации
             animator.Update(0f);
+        }
+        // Очищаем список пораженных целей при сбросе анимации
+        WeaponCollider weaponCollider = GetComponentInChildren<WeaponCollider>();
+        if (weaponCollider != null)
+        {
+            weaponCollider.ClearHitTargets();
         }
     }
 
@@ -334,6 +430,7 @@ public class Unit : MonoBehaviour
             {
                 startGridPosition = ChessGrid.Instance.WorldToGridCoords(transform.position);
                 lastLegalGridPosition = startGridPosition;
+                lastCheckedGridPosition = startGridPosition; // Инициализируем отслеживание переходов
             }
             // Если у юнита были потрачены очки целостности, и он начинает новый ход, 
             // мы можем рассмотреть возможность их частичного восстановления здесь (если бы ты хотел).
@@ -342,6 +439,7 @@ public class Unit : MonoBehaviour
         {
             // Конец хода: Просто убеждаемся, что анимация остановлена
             ResetAnimation();
+            // isAttacking уже сброшен в ResetAnimation()
             
             // Если юнит завершает ход, и он стоит не на стартовой клетке
             if (ChessGrid.Instance != null)
@@ -396,7 +494,6 @@ public class Unit : MonoBehaviour
     public void Heal(int amount)
     {
         health = Mathf.Min(health + amount, maxHealth);
-        Debug.Log($"{chessType} исцелен на {amount} HP. Текущее HP: {health}/{maxHealth}");
     }
     
     /// <summary>
@@ -459,7 +556,6 @@ public class Unit : MonoBehaviour
                 {
                     visualEffects.PlayBishopReflectionEffect(false);
                 }
-                Debug.Log($"{chessType}: Эффект отражения закончился");
             }
         }
         
@@ -476,7 +572,6 @@ public class Unit : MonoBehaviour
                 {
                     visualEffects.PlayGuardianShieldEffect(false);
                 }
-                Debug.Log($"{chessType}: Эффект снижения урона закончился");
             }
         }
         
@@ -493,7 +588,6 @@ public class Unit : MonoBehaviour
                 {
                     visualEffects.PlayQueenBoostEffect(false);
                 }
-                Debug.Log($"{chessType}: Эффект увеличения урона закончился");
             }
         }
     }
@@ -516,4 +610,82 @@ public class Unit : MonoBehaviour
     /// </summary>
     /// <returns>true если юнит блокирует, false если нет</returns>
     public bool IsBlocking() => isBlocking;
+    
+    // ========== БОЕВЫЕ ЗВУКИ ==========
+    
+    /// <summary>
+    /// Получает AudioSource для боевых звуков (для использования в WeaponCollider)
+    /// </summary>
+    public AudioSource GetCombatAudioSource()
+    {
+        if (unitAudioSource == null)
+        {
+            InitializeAudioSources();
+        }
+        return unitAudioSource;
+    }
+    
+    /// <summary>
+    /// Воспроизводит звук получения урона с небольшой задержкой после атаки
+    /// </summary>
+    private void PlayTakeDamageSound()
+    {
+        if (takeDamageSound != null)
+        {
+            // Инициализируем AudioSource, если его нет
+            if (unitAudioSource == null)
+            {
+                InitializeAudioSources();
+            }
+            
+            if (unitAudioSource != null)
+            {
+                // Добавляем небольшую задержку, чтобы звук атаки успел проиграться
+                StartCoroutine(PlayTakeDamageSoundDelayed(0.1f));
+            }
+        }
+    }
+    
+    private System.Collections.IEnumerator PlayTakeDamageSoundDelayed(float delay)
+    {
+        yield return new WaitForSeconds(delay);
+        if (unitAudioSource != null && takeDamageSound != null)
+        {
+            float volume = AudioManager.Instance != null ? AudioManager.Instance.SFXVolume : 1f;
+            unitAudioSource.PlayOneShot(takeDamageSound, volume);
+        }
+    }
+    
+    /// <summary>
+    /// Воспроизводит звук смерти юнита через временный объект, чтобы звук проигрался даже после уничтожения юнита
+    /// </summary>
+    private void PlayDeathSound()
+    {
+        if (unitDeathSound == null)
+        {
+            return;
+        }
+        
+        // Останавливаем все другие звуки перед воспроизведением звука смерти
+        if (unitAudioSource != null) unitAudioSource.Stop();
+        
+        // Создаем временный объект для воспроизведения звука смерти
+        // Этот объект не будет уничтожен вместе с юнитом
+        GameObject tempSoundObject = new GameObject("TempDeathSound");
+        tempSoundObject.transform.position = transform.position;
+        AudioSource tempAudioSource = tempSoundObject.AddComponent<AudioSource>();
+        
+        // Настраиваем AudioSource
+        tempAudioSource.spatialBlend = 1f; // 3D звук
+        tempAudioSource.minDistance = 5f;
+        tempAudioSource.maxDistance = 20f;
+        tempAudioSource.priority = 0; // Высокий приоритет
+        
+        float volume = PlayerPrefs.HasKey("SFXVolume") ? PlayerPrefs.GetFloat("SFXVolume") : 1f;
+        tempAudioSource.PlayOneShot(unitDeathSound, volume);
+        
+        // Уничтожаем временный объект после проигрывания звука
+        Destroy(tempSoundObject, unitDeathSound.length + 0.1f);
+    }
+    
 }

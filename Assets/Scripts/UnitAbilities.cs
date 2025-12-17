@@ -17,8 +17,6 @@ public class UnitAbilities : MonoBehaviour
     private int cooldownQueenDamageBoost = 0;    // Ферзь - Увеличение урона (КД: 5 ходов)
     private int cooldownKingHeal = 0;            // Король - Хил (КД: 4 хода)
     
-    [Header("Ability States")]
-    private bool isKingHealMode = false;         // Режим выбора цели для хилла короля
     
     void Start()
     {
@@ -41,12 +39,6 @@ public class UnitAbilities : MonoBehaviour
         if (Keyboard.current.qKey.wasPressedThisFrame)
         {
             ActivateAbility();
-        }
-        
-        // Обработка режима выбора цели для короля
-        if (isKingHealMode)
-        {
-            HandleKingHealSelection();
         }
     }
     
@@ -245,86 +237,59 @@ public class UnitAbilities : MonoBehaviour
     
     /// <summary>
     /// Активирует способность короля - исцеление союзного юнита на 20% HP
+    /// Исцеляет союзника, на которого смотрит игрок (в центре экрана)
     /// </summary>
     private void ActivateKingHeal()
     {
         if (cooldownKingHeal > 0)
         {
-            Debug.Log($"Способность короля на перезарядке! Осталось ходов: {cooldownKingHeal}");
             return;
         }
         
-        // Включаем режим выбора цели
-        isKingHealMode = true;
-        Debug.Log("Выберите союзного юнита для исцеления (ЛКМ) или отмените (ПКМ)");
-    }
-    
-    /// <summary>
-    /// Обрабатывает выбор цели для хилла короля
-    /// </summary>
-    private void HandleKingHealSelection()
-    {
-        // Отмена по правой кнопке мыши
-        if (Mouse.current.rightButton.wasPressedThisFrame)
+        // Получаем action camera
+        Camera actionCamera = CameraManager.Instance != null ? CameraManager.Instance.GetActionCamera() : null;
+        if (actionCamera == null)
         {
-            isKingHealMode = false;
-            Debug.Log("Исцеление короля отменено.");
             return;
         }
         
-        // Выбор цели по левой кнопке мыши
-        if (Mouse.current.leftButton.wasPressedThisFrame && CameraManager.Instance != null)
+        // Raycast из центра экрана (куда смотрит игрок)
+        Ray ray = actionCamera.ScreenPointToRay(new Vector3(Screen.width / 2f, Screen.height / 2f, 0f));
+        RaycastHit hit;
+        
+        // Raycast на расстояние до 50 единиц (можно настроить)
+        if (Physics.Raycast(ray, out hit, 50f))
         {
-            // Используем action camera для raycast в экшен-режиме
-            Camera actionCamera = CameraManager.Instance.GetActionCamera();
-            if (actionCamera == null)
+            Unit target = hit.collider.GetComponentInParent<Unit>();
+            
+            // Если не нашли в родителе, пробуем в самом объекте
+            if (target == null)
             {
-                // Если action camera недоступна, используем tactical camera
-                actionCamera = CameraManager.Instance.GetTacticalCamera();
+                target = hit.collider.GetComponent<Unit>();
             }
             
-            if (actionCamera != null)
+            // Проверяем, что цель - союзник и не сам король
+            if (target != null && target.owner == unit.owner && target != unit)
             {
-                Ray ray = actionCamera.ScreenPointToRay(Mouse.current.position.ReadValue());
-                RaycastHit hit;
-                
-                // Raycast на все объекты, затем проверяем Unit компонент
-                if (Physics.Raycast(ray, out hit, Mathf.Infinity))
+                // Проверяем, что у союзника не полное здоровье
+                if (target.GetHealth() >= target.GetMaxHealth())
                 {
-                    Unit target = hit.collider.GetComponentInParent<Unit>();
-                    
-                    // Если не нашли в родителе, пробуем в самом объекте
-                    if (target == null)
-                    {
-                        target = hit.collider.GetComponent<Unit>();
-                    }
-                    
-                    // Проверяем, что цель - союзник
-                    if (target != null && target.owner == unit.owner && target != unit)
-                    {
-                        // Исцеляем на 20% от максимального здоровья
-                        int healAmount = Mathf.RoundToInt(target.GetMaxHealth() * 0.2f);
-                        target.Heal(healAmount);
-                        
-                        // Устанавливаем КД
-                        cooldownKingHeal = 4;
-                        
-                        // Воспроизводим визуальный эффект и звук
-                        AbilityVisualEffects visualEffects = unit.GetComponent<AbilityVisualEffects>();
-                        if (visualEffects != null)
-                        {
-                            visualEffects.PlayKingHealEffect(target);
-                        }
-                        
-                        // Отключаем режим выбора
-                        isKingHealMode = false;
-                        
-                        Debug.Log($"Король исцелил {target.chessType} на {healAmount} HP");
-                    }
-                    else if (target != null)
-                    {
-                        Debug.Log("Можно исцелять только союзников!");
-                    }
+                    // У союзника уже полное здоровье, исцеление невозможно
+                    return;
+                }
+                
+                // Исцеляем на 20% от максимального здоровья
+                int healAmount = Mathf.RoundToInt(target.GetMaxHealth() * 0.2f);
+                target.Heal(healAmount);
+                
+                // Устанавливаем КД
+                cooldownKingHeal = 4;
+                
+                // Воспроизводим визуальный эффект и звук
+                AbilityVisualEffects visualEffects = unit.GetComponent<AbilityVisualEffects>();
+                if (visualEffects != null)
+                {
+                    visualEffects.PlayKingHealEffect(target);
                 }
             }
         }

@@ -2321,7 +2321,7 @@ GameObject:
   - component: {fileID: 5770663237386461304}
   m_Layer: 3
   m_Name: Queen
-  m_TagString: Untagged
+  m_TagString: Unit
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
@@ -2409,17 +2409,26 @@ MonoBehaviour:
   chessType: 3
   currentGridPosition: {x: 0, y: 0}
   isFirstMove: 0
-  health: 100
-  maxHealth: 100
-  damage: 20
+  health: 120
+  maxHealth: 120
+  damage: 30
   moveSpeed: 5
-  jumpForce: 5
   gravity: -9.81
   mouseSensitivity: 0.1
   maxVerticalAngle: 80
   isKing: 0
+  baseMoveSpeed: 5
+  minAnimationSpeed: 0.6
+  maxAnimationSpeed: 1.2
   ruleIntegrityPoints: 100
-  integrityCostPerSecond: 5
+  integrityCostPerCell: 15
+  takeDamageSound: {fileID: 8300000, guid: 1500a59580468ea498dd4af0dad4b92d, type: 3}
+  unitDeathSound: {fileID: 8300000, guid: adec93ee0f758b1409515f312721a4ea, type: 3}
+  footstepSound: {fileID: 8300000, guid: c4f90ea03221f5443a7a7390f33ebc6a, type: 3}
+  footstepInterval: 0.8
+  attackStateName: attack
+  attackDamageStartTime: 0.3
+  attackDamageEndTime: 0.5
 --- !u!114 &2140434537186029957
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -3202,7 +3211,6 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 8978211080648234965}
-  - component: {fileID: 6498081368558067862}
   m_Layer: 3
   m_Name: Weapon
   m_TagString: Untagged
@@ -3226,18 +3234,6 @@ Transform:
   - {fileID: 2132381880932196919}
   m_Father: {fileID: 1059911137251877949}
   m_LocalEulerAnglesHint: {x: 0, y: -0.33, z: -5.23}
---- !u!114 &6498081368558067862
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 8331014703797132540}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 6a3cec6d6f9c75347ac3e801bc7881af, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::WeaponCollider
 --- !u!1 &8334874273531053370
 GameObject:
   m_ObjectHideFlags: 0

@@ -1,18 +1,38 @@
 using UnityEngine;
 using UnityEngine.SceneManagement;
+using UnityEngine.UI;
 
 public class MainMenu : MonoBehaviour
 {
     [SerializeField] private GameObject howToPlayPanel;
     [SerializeField] private TutorialVideoManager tutorialVideoManager; // Ссылка на менеджер видео (опционально)
     
+    [Header("Settings Panel")]
+    [SerializeField] private GameObject settingsPanel; // Панель настроек
+    
+    [Header("Main Menu Buttons")]
+    [SerializeField] private GameObject mainMenuButtons; // Родительский объект со всеми кнопками главного меню
+    
+    [Header("Main Menu Music")]
+    [SerializeField] private AudioSource mainMenuMusicSource; // AudioSource для музыки главного меню
+    
+    [Header("Volume Settings")]
+    [SerializeField] private Slider musicVolumeSlider; // Слайдер громкости музыки
+    [SerializeField] private Slider sfxVolumeSlider; // Слайдер громкости звуковых эффектов
+    
+    // Временные значения громкости (до применения)
+    private float tempMusicVolume = 1f;
+    private float tempSFXVolume = 1f;
+    
     public void PlayGame()
     {
+        PlayButtonClickSound();
         SceneManager.LoadScene("SampleScene");
     }
 
     public void QuitGame()
     {
+        PlayButtonClickSound();
         Application.Quit();
     }
     
@@ -21,6 +41,7 @@ public class MainMenu : MonoBehaviour
     /// </summary>
     public void OpenHowToPlay()
     {
+        PlayButtonClickSound();
         if (howToPlayPanel != null)
         {
             howToPlayPanel.SetActive(true);
@@ -38,6 +59,7 @@ public class MainMenu : MonoBehaviour
     /// </summary>
     public void CloseHowToPlay()
     {
+        PlayButtonClickSound();
         if (howToPlayPanel != null)
         {
             howToPlayPanel.SetActive(false);
@@ -48,5 +70,161 @@ public class MainMenu : MonoBehaviour
         {
             tutorialVideoManager.StopVideo();
         }
+    }
+    
+    /// <summary>
+    /// Открывает панель настроек
+    /// </summary>
+    public void OpenSettings()
+    {
+        PlayButtonClickSound();
+        if (settingsPanel != null)
+        {
+            settingsPanel.SetActive(true);
+            // Инициализируем слайдеры при открытии панели настроек
+            InitializeVolumeSliders();
+        }
+        
+        // Скрываем кнопки главного меню
+        if (mainMenuButtons != null)
+        {
+            mainMenuButtons.SetActive(false);
+        }
+    }
+    
+    /// <summary>
+    /// Закрывает панель настроек
+    /// </summary>
+    public void CloseSettings()
+    {
+        PlayButtonClickSound();
+        if (settingsPanel != null)
+        {
+            settingsPanel.SetActive(false);
+        }
+        
+        // Показываем кнопки главного меню обратно
+        if (mainMenuButtons != null)
+        {
+            mainMenuButtons.SetActive(true);
+        }
+    }
+    
+    /// <summary>
+    /// Воспроизводит звук клика кнопки
+    /// </summary>
+    private void PlayButtonClickSound()
+    {
+        if (AudioManager.Instance != null)
+        {
+            AudioManager.Instance.PlayButtonClick();
+        }
+    }
+    
+    void Start()
+    {
+        // Убеждаемся, что AudioManager существует
+        AudioManager.EnsureInstanceExists();
+        
+        // Закрываем панель настроек при старте (если она была открыта)
+        if (settingsPanel != null)
+        {
+            settingsPanel.SetActive(false);
+        }
+        
+        // Применяем сохраненные настройки громкости к музыке главного меню
+        if (mainMenuMusicSource != null)
+        {
+            float savedMusicVolume = PlayerPrefs.HasKey("MusicVolume") ? PlayerPrefs.GetFloat("MusicVolume") : 1f;
+            mainMenuMusicSource.volume = savedMusicVolume;
+        }
+    }
+    
+    /// <summary>
+    /// Инициализирует слайдеры громкости текущими значениями из PlayerPrefs
+    /// </summary>
+    private void InitializeVolumeSliders()
+    {
+        // Загружаем сохраненные значения из PlayerPrefs
+        float savedMusicVolume = PlayerPrefs.HasKey("MusicVolume") ? PlayerPrefs.GetFloat("MusicVolume") : 1f;
+        float savedSFXVolume = PlayerPrefs.HasKey("SFXVolume") ? PlayerPrefs.GetFloat("SFXVolume") : 1f;
+        
+        // Инициализируем временные значения
+        tempMusicVolume = savedMusicVolume;
+        tempSFXVolume = savedSFXVolume;
+        
+        if (musicVolumeSlider != null)
+        {
+            musicVolumeSlider.value = savedMusicVolume;
+            musicVolumeSlider.onValueChanged.RemoveAllListeners();
+            musicVolumeSlider.onValueChanged.AddListener(OnMusicVolumeSliderChanged);
+        }
+        
+        if (sfxVolumeSlider != null)
+        {
+            sfxVolumeSlider.value = savedSFXVolume;
+            sfxVolumeSlider.onValueChanged.RemoveAllListeners();
+            sfxVolumeSlider.onValueChanged.AddListener(OnSFXVolumeSliderChanged);
+        }
+    }
+    
+    /// <summary>
+    /// Вызывается при изменении слайдера громкости музыки (сохраняет во временную переменную)
+    /// </summary>
+    private void OnMusicVolumeSliderChanged(float value)
+    {
+        tempMusicVolume = value;
+        // Применяем сразу к музыке главного меню
+        if (mainMenuMusicSource != null)
+        {
+            mainMenuMusicSource.volume = value;
+        }
+        // Применяем к AudioManager
+        if (AudioManager.Instance != null)
+        {
+            AudioManager.Instance.SetMusicVolume(value);
+        }
+    }
+    
+    /// <summary>
+    /// Вызывается при изменении слайдера громкости звуковых эффектов (сохраняет во временную переменную)
+    /// </summary>
+    private void OnSFXVolumeSliderChanged(float value)
+    {
+        tempSFXVolume = value;
+        // Применяем к AudioManager
+        if (AudioManager.Instance != null)
+        {
+            AudioManager.Instance.SetSFXVolume(value);
+        }
+    }
+    
+    /// <summary>
+    /// Применяет изменения громкости (вызывается кнопкой "Применить")
+    /// </summary>
+    public void ApplySettings()
+    {
+        PlayButtonClickSound();
+        
+        // Сохраняем настройки в PlayerPrefs
+        PlayerPrefs.SetFloat("MusicVolume", tempMusicVolume);
+        PlayerPrefs.SetFloat("SFXVolume", tempSFXVolume);
+        PlayerPrefs.Save();
+        
+        // Применяем к музыке главного меню (если есть)
+        if (mainMenuMusicSource != null)
+        {
+            mainMenuMusicSource.volume = tempMusicVolume;
+        }
+        
+        // Применяем к AudioManager
+        if (AudioManager.Instance != null)
+        {
+            AudioManager.Instance.SetMusicVolume(tempMusicVolume);
+            AudioManager.Instance.SetSFXVolume(tempSFXVolume);
+        }
+        
+        // Закрываем панель настроек
+        CloseSettings();
     }
 }

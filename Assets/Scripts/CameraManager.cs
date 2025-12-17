@@ -27,6 +27,8 @@ public class CameraManager : MonoBehaviour
     [SerializeField] private TextMeshProUGUI integrityText;
     [SerializeField] private TextMeshProUGUI healthText;
     [SerializeField] private TextMeshProUGUI turnText;
+    
+    
     private Unit currentUnit; // Текущий выбранный юнит
     private bool isActionMode = false; // Флаг режима (false - тактический, true - экшен)
     private float actionTime = 5f; // 5 секунд на ход
@@ -47,6 +49,9 @@ public class CameraManager : MonoBehaviour
         Cursor.visible = true;
 
         SetTacticalCameraPosition(GameManager.Instance.currentPlayer);
+        
+        // Инициализируем Audio Listener на тактической камере (начальное состояние)
+        SwitchAudioListener(tacticalCamera, actionCamera);
 
         timerText.gameObject.SetActive(false);
         turnText.gameObject.SetActive(true);
@@ -99,6 +104,11 @@ public class CameraManager : MonoBehaviour
                     Unit unit = hit.collider.GetComponent<Unit>();
                     if (unit != null && unit.owner == GameManager.Instance.currentPlayer)
                     {
+                        // Воспроизводим звук выбора юнита
+                        if (AudioManager.Instance != null)
+                        {
+                            AudioManager.Instance.PlayUnitSelect();
+                        }
                         SwitchToActionMode(unit);
                     }
                     else
@@ -132,11 +142,20 @@ public class CameraManager : MonoBehaviour
 
         tacticalCamera.enabled = false;
         actionCamera.enabled = true;
+        
+        // Переключаем Audio Listener на экшен-камеру
+        SwitchAudioListener(actionCamera, tacticalCamera);
 
         Cursor.lockState = CursorLockMode.Locked;
         Cursor.visible = false;
 
         isActionMode = true;
+        
+        // Воспроизводим звук перехода в экшен-режим
+        if (AudioManager.Instance != null)
+        {
+            AudioManager.Instance.PlayEnterActionMode();
+        }
 
         remainingTime = actionTime;
         if (timerText != null) timerText.gameObject.SetActive(true);
@@ -180,11 +199,19 @@ public class CameraManager : MonoBehaviour
             // Включаем/Выключаем только если они не были уничтожены
             if (tacticalCamera != null) tacticalCamera.enabled = true;
             actionCamera.enabled = false;
+            
+            // Переключаем Audio Listener на тактическую камеру
+            SwitchAudioListener(tacticalCamera, actionCamera);
         }
         else
         {
             // 🚨 ФИКС: Если actionCamera была уничтожена, нужно включить tacticalCamera вручную.
-            if (tacticalCamera != null) tacticalCamera.enabled = true;
+            if (tacticalCamera != null)
+            {
+                tacticalCamera.enabled = true;
+                // Переключаем Audio Listener на тактическую камеру
+                SwitchAudioListener(tacticalCamera, null);
+            }
             Debug.LogWarning("Action Camera была уничтожена. Переключение в Тактический режим.");
         }
 
@@ -327,4 +354,35 @@ public class CameraManager : MonoBehaviour
     }
     
     public bool IsActionMode() => isActionMode;
+    
+    /// <summary>
+    /// Переключает Audio Listener между камерами
+    /// </summary>
+    /// <param name="activeCamera">Камера, на которую переключаем Audio Listener</param>
+    /// <param name="inactiveCamera">Камера, с которой отключаем Audio Listener</param>
+    private void SwitchAudioListener(Camera activeCamera, Camera inactiveCamera)
+    {
+        // Сначала включаем Audio Listener на активной камере (чтобы не было разрыва)
+        if (activeCamera != null)
+        {
+            AudioListener activeListener = activeCamera.GetComponent<AudioListener>();
+            if (activeListener == null)
+            {
+                // Если Audio Listener отсутствует, создаем его
+                activeListener = activeCamera.gameObject.AddComponent<AudioListener>();
+            }
+            activeListener.enabled = true;
+        }
+        
+        // Затем отключаем Audio Listener на неактивной камере
+        if (inactiveCamera != null)
+        {
+            AudioListener inactiveListener = inactiveCamera.GetComponent<AudioListener>();
+            if (inactiveListener != null)
+            {
+                inactiveListener.enabled = false;
+            }
+        }
+    }
+    
 }

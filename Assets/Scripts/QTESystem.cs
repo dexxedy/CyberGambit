@@ -15,6 +15,7 @@ public class QTESystem : MonoBehaviour
     [SerializeField] private float qteWindowTime = 1.0f; // Время на реакцию игрока (в секундах)
     [SerializeField] private float enemyAttackDelay = 0.3f; // Задержка перед атакой врага (для визуального эффекта)
     
+    
     private bool isQTEActive = false;
     private Unit playerUnit;
     private Unit enemyUnit;
@@ -61,6 +62,12 @@ public class QTESystem : MonoBehaviour
         playerUnit = player;
         enemyUnit = enemy;
         isQTEActive = true;
+        
+        // Воспроизводим звук активации QTE
+        if (AudioManager.Instance != null)
+        {
+            AudioManager.Instance.PlayQTEAactivate();
+        }
         
         // Запускаем корутину QTE
         currentQTECoroutine = StartCoroutine(QTECoroutine());
@@ -153,12 +160,26 @@ public class QTESystem : MonoBehaviour
                 playerUnit.SetBlocking(true);
                 playerUnit.TakeDamage(0); // Урон полностью заблокирован
                 playerUnit.SetBlocking(false);
+                
+                // Воспроизводим звук успешного QTE
+                if (AudioManager.Instance != null)
+                {
+                    AudioManager.Instance.PlayQTESuccess();
+                }
+                
                 Debug.Log($"{playerUnit.chessType} заблокировал атаку! Урон полностью заблокирован.");
                 break;
                 
             case QTEResult.Failed:
                 // Неудача - игрок получает полный урон от врага
                 playerUnit.TakeDamage(enemyUnit.Damage);
+                
+                // Воспроизводим звук провала QTE
+                if (AudioManager.Instance != null)
+                {
+                    AudioManager.Instance.PlayQTEFail();
+                }
+                
                 Debug.Log($"{playerUnit.chessType} не среагировал! Получен урон: {enemyUnit.Damage}");
                 break;
         }

@@ -776,7 +776,6 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 5411422222526693741}
-  - component: {fileID: 7284297310843318579}
   m_Layer: 3
   m_Name: Weapon
   m_TagString: Untagged
@@ -800,18 +799,6 @@ Transform:
   - {fileID: 3444872641983221463}
   m_Father: {fileID: 9127114451630074408}
   m_LocalEulerAnglesHint: {x: 0, y: -0.33, z: -5.23}
---- !u!114 &7284297310843318579
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1565834884417394497}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 6a3cec6d6f9c75347ac3e801bc7881af, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::WeaponCollider
 --- !u!1 &1760637505678262271
 GameObject:
   m_ObjectHideFlags: 0
@@ -1464,7 +1451,7 @@ GameObject:
   - component: {fileID: -484036957345830785}
   m_Layer: 3
   m_Name: Horse
-  m_TagString: Untagged
+  m_TagString: Unit
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
@@ -1552,17 +1539,26 @@ MonoBehaviour:
   chessType: 1
   currentGridPosition: {x: 0, y: 0}
   isFirstMove: 0
-  health: 100
-  maxHealth: 100
-  damage: 20
-  moveSpeed: 5
-  jumpForce: 5
+  health: 90
+  maxHealth: 90
+  damage: 22
+  moveSpeed: 1.7
   gravity: -9.81
   mouseSensitivity: 0.1
   maxVerticalAngle: 80
   isKing: 0
-  ruleIntegrityPoints: 100
-  integrityCostPerSecond: 10
+  baseMoveSpeed: 5
+  minAnimationSpeed: 0.6
+  maxAnimationSpeed: 1.2
+  ruleIntegrityPoints: 90
+  integrityCostPerCell: 15
+  takeDamageSound: {fileID: 8300000, guid: 1500a59580468ea498dd4af0dad4b92d, type: 3}
+  unitDeathSound: {fileID: 8300000, guid: adec93ee0f758b1409515f312721a4ea, type: 3}
+  footstepSound: {fileID: 8300000, guid: c4f90ea03221f5443a7a7390f33ebc6a, type: 3}
+  footstepInterval: 0.8
+  attackStateName: attack
+  attackDamageStartTime: 0.3
+  attackDamageEndTime: 0.5
 --- !u!114 &1212069089147813477
 MonoBehaviour:
   m_ObjectHideFlags: 0
