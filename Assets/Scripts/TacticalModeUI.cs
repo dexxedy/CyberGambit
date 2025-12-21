@@ -20,6 +20,13 @@ public class TacticalModeUI : MonoBehaviour
     [SerializeField] private TextMeshProUGUI cooldownText; // КД способности (например, "КД: 2 хода")
     [SerializeField] private Image healthBarFill; // Полоса здоровья (опционально)
     
+    [Header("Turn Panel")]
+    [SerializeField] private GameObject turnPanel; // Панель с информацией о текущем ходе
+    [SerializeField] private TextMeshProUGUI turnText; // Текст "Ход Игрока 1" или "Ход Игрока 2"
+    
+    [Header("HUD Container")]
+    [SerializeField] private GameObject tacticalHUDContainer; // Родительский GameObject для всего HUD тактического режима
+    
     [Header("Settings")]
     [SerializeField] private float raycastDistance = 100f; // Дистанция raycast
     [SerializeField] private LayerMask unitLayer; // Слой юнитов
@@ -41,10 +48,22 @@ public class TacticalModeUI : MonoBehaviour
         {
             unitInfoPanel.SetActive(false);
         }
+        
+        // Инициализация панели хода
+        UpdateTurnPanel();
     }
     
     void Update()
     {
+        // Проверяем паузу - если игра на паузе, не обновляем HUD
+        if (GameManager.Instance != null && GameManager.Instance.IsPaused())
+        {
+            return;
+        }
+        
+        // Обновляем панель хода
+        UpdateTurnPanel();
+        
         // Показываем информацию только в тактическом режиме
         if (CameraManager.Instance != null && !CameraManager.Instance.IsActionMode())
         {
@@ -219,6 +238,83 @@ public class TacticalModeUI : MonoBehaviour
             default:
                 return "Нет описания.";
         }
+    }
+    
+    /// <summary>
+    /// Обновляет панель с информацией о текущем ходе
+    /// </summary>
+    private void UpdateTurnPanel()
+    {
+        if (turnPanel == null || turnText == null) return;
+        
+        // Проверяем режим игры - показываем только в PvP
+        if (GameManager.Instance != null)
+        {
+            bool isPvPMode = GameManager.Instance.GetGameMode() == GameMode.PlayerVsPlayer;
+            
+            // Показываем панель только в режиме PvP и в тактическом режиме
+            bool shouldShow = isPvPMode;
+            if (CameraManager.Instance != null)
+            {
+                shouldShow = shouldShow && !CameraManager.Instance.IsActionMode();
+            }
+            
+            turnPanel.SetActive(shouldShow);
+            
+            if (shouldShow)
+            {
+                // Обновляем текст на русском
+                Player currentPlayer = GameManager.Instance.currentPlayer;
+                if (currentPlayer == Player.Player1)
+                {
+                    turnText.text = "Ход Игрока 1";
+                }
+                else
+                {
+                    turnText.text = "Ход Игрока 2";
+                }
+            }
+        }
+        else
+        {
+            // Если GameManager не найден, скрываем панель
+            turnPanel.SetActive(false);
+        }
+    }
+    
+    /// <summary>
+    /// Скрывает весь HUD тактического режима (вызывается при паузе)
+    /// </summary>
+    public void HideHUD()
+    {
+        if (tacticalHUDContainer != null)
+        {
+            tacticalHUDContainer.SetActive(false);
+        }
+        else
+        {
+            // Если контейнер не назначен, скрываем все элементы вручную
+            if (unitInfoPanel != null)
+            {
+                unitInfoPanel.SetActive(false);
+            }
+            if (turnPanel != null)
+            {
+                turnPanel.SetActive(false);
+            }
+        }
+    }
+    
+    /// <summary>
+    /// Показывает HUD тактического режима (вызывается при возобновлении игры)
+    /// </summary>
+    public void ShowHUD()
+    {
+        if (tacticalHUDContainer != null)
+        {
+            tacticalHUDContainer.SetActive(true);
+        }
+        // Элементы будут показаны автоматически в Update() когда войдём в тактический режим
     }
 }
 

@@ -124,4 +124,4 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 6a3cec6d6f9c75347ac3e801bc7881af, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::WeaponCollider
-  weaponHitSound: {fileID: 8300000, guid: 07e2c19c488793144bf3b3ca9f6b6885, type: 3}
+  weaponHitSound: {fileID: 8300000, guid: 583f0a8afe1f9924597c8c0a0f31715c, type: 3}

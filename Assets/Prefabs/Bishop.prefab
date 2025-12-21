@@ -1739,9 +1739,8 @@ MonoBehaviour:
   ruleIntegrityPoints: 100
   integrityCostPerCell: 12
   takeDamageSound: {fileID: 8300000, guid: 1500a59580468ea498dd4af0dad4b92d, type: 3}
-  unitDeathSound: {fileID: 8300000, guid: adec93ee0f758b1409515f312721a4ea, type: 3}
-  footstepSound: {fileID: 8300000, guid: c4f90ea03221f5443a7a7390f33ebc6a, type: 3}
-  footstepInterval: 0.8
+  unitDeathSound: {fileID: 8300000, guid: d5d1168b7f6e63d4dbe1df69b73e27c4, type: 3}
+  unitAudioSource: {fileID: 0}
   attackStateName: attack
   attackDamageStartTime: 0.3
   attackDamageEndTime: 0.5

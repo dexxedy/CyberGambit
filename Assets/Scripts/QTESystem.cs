@@ -12,7 +12,7 @@ public class QTESystem : MonoBehaviour
     public static QTESystem Instance;
     
     [Header("QTE Settings")]
-    [SerializeField] private float qteWindowTime = 1.0f; // Время на реакцию игрока (в секундах)
+    [SerializeField] private float qteWindowTime = 5.0f; // Время на реакцию игрока (в секундах)
     [SerializeField] private float enemyAttackDelay = 0.3f; // Задержка перед атакой врага (для визуального эффекта)
     
     
@@ -20,7 +20,8 @@ public class QTESystem : MonoBehaviour
     private Unit playerUnit;
     private Unit enemyUnit;
     private Coroutine currentQTECoroutine;
-    private QTEKey currentQTEKey; // Текущая случайная клавиша для QTE
+    private List<QTEKey> qteSequence = new List<QTEKey>(); // Последовательность из 3 клавиш
+    private int currentKeyIndex = 0; // Текущий индекс в последовательности
     
     /// <summary>
     /// Определяет возможности каждой фигуры для QTE:
@@ -63,10 +64,22 @@ public class QTESystem : MonoBehaviour
         enemyUnit = enemy;
         isQTEActive = true;
         
+        // Останавливаем таймер хода во время QTE
+        if (CameraManager.Instance != null)
+        {
+            CameraManager.Instance.PauseTimer();
+        }
+        
         // Воспроизводим звук активации QTE
         if (AudioManager.Instance != null)
         {
             AudioManager.Instance.PlayQTEAactivate();
+        }
+        
+        // Скрываем HUD экшен-режима при открытии QTE
+        if (ActionModeUI.Instance != null)
+        {
+            ActionModeUI.Instance.HideHUD();
         }
         
         // Запускаем корутину QTE
@@ -78,14 +91,19 @@ public class QTESystem : MonoBehaviour
     /// </summary>
     private IEnumerator QTECoroutine()
     {
-        // 0. Случайно выбираем клавишу для QTE (Z, X или C)
+        // 0. Генерируем случайную последовательность из 3 клавиш (могут повторяться)
         QTEKey[] availableKeys = { QTEKey.Z, QTEKey.X, QTEKey.C };
-        currentQTEKey = availableKeys[Random.Range(0, availableKeys.Length)];
+        qteSequence.Clear();
+        for (int i = 0; i < 3; i++)
+        {
+            qteSequence.Add(availableKeys[Random.Range(0, availableKeys.Length)]);
+        }
+        currentKeyIndex = 0;
         
-        // 1. Показываем UI QTE с подсказками для игрока
+        // 1. Показываем UI QTE с последовательностью клавиш
         if (QTEManager.Instance != null)
         {
-            QTEManager.Instance.ShowQTE(playerUnit.chessType, unitCapabilities[playerUnit.chessType], currentQTEKey);
+            QTEManager.Instance.ShowQTE(playerUnit.chessType, unitCapabilities[playerUnit.chessType], qteSequence);
         }
         
         // 2. Вражеский юнит начинает атаку (с небольшой задержкой для визуального эффекта)
@@ -101,32 +119,74 @@ public class QTESystem : MonoBehaviour
             }
         }
         
-        // 3. Ожидаем ввода игрока в течение qteWindowTime секунд
-        float timer = qteWindowTime;
-        bool playerReacted = false;
+        // 3. Ожидаем ввода игрока - нужно нажать все 3 клавиши в правильном порядке
+        float timer = qteWindowTime; // Увеличиваем время для 3 клавиш
+        float startTime = Time.time;
         QTEResult result = QTEResult.Failed;
         
-        while (timer > 0f && !playerReacted)
+        // Получаем возможности текущей фигуры
+        QTECapabilities caps = unitCapabilities[playerUnit.chessType];
+        
+        if (!caps.canBlock)
         {
-            timer -= Time.deltaTime;
-            
-            // Обновляем таймер в UI
-            if (QTEManager.Instance != null)
+            // Пешка не может блокировать - сразу провал
+            result = QTEResult.Failed;
+        }
+        else
+        {
+            // Ожидаем последовательность клавиш
+            while (timer > 0f && currentKeyIndex < qteSequence.Count)
             {
-                QTEManager.Instance.UpdateTimer(timer, qteWindowTime);
+                timer -= Time.deltaTime;
+                
+                // Обновляем таймер в UI
+                if (QTEManager.Instance != null)
+                {
+                    QTEManager.Instance.UpdateTimer(timer, qteWindowTime * 1.5f);
+                    QTEManager.Instance.UpdateSequenceProgress(currentKeyIndex, qteSequence.Count);
+                }
+                
+                // Проверяем текущую клавишу в последовательности
+                QTEKey expectedKey = qteSequence[currentKeyIndex];
+                
+                // Проверяем, нажата ли правильная клавиша
+                if (IsQTEKeyPressed(expectedKey))
+                {
+                    // Правильная клавиша нажата!
+                    currentKeyIndex++;
+                    
+                    // Обновляем UI - подсвечиваем следующую клавишу
+                    if (QTEManager.Instance != null)
+                    {
+                        QTEManager.Instance.HighlightKey(currentKeyIndex - 1, true);
+                    }
+                    
+                    // Если все клавиши нажаты - успех!
+                    if (currentKeyIndex >= qteSequence.Count)
+                    {
+                        result = QTEResult.Blocked;
+                        break;
+                    }
+                }
+                else if (IsAnyQTEKeyPressed())
+                {
+                    // Игрок нажал неправильную клавишу - провал
+                    result = QTEResult.Failed;
+                    if (QTEManager.Instance != null)
+                    {
+                        QTEManager.Instance.HighlightKey(currentKeyIndex, false);
+                    }
+                    break;
+                }
+                
+                yield return null;
             }
             
-            // Получаем возможности текущей фигуры
-            QTECapabilities caps = unitCapabilities[playerUnit.chessType];
-            
-            // Проверяем ввод для блокирования - проверяем случайную клавишу (Z, X или C)
-            if (caps.canBlock && IsQTEKeyPressed(currentQTEKey))
+            // Если время вышло и не все клавиши нажаты - провал
+            if (currentKeyIndex < qteSequence.Count && result != QTEResult.Blocked)
             {
-                playerReacted = true;
-                result = QTEResult.Blocked;
+                result = QTEResult.Failed;
             }
-            
-            yield return null;
         }
         
         // 4. Обрабатываем результат QTE (успех/неудача)
@@ -138,11 +198,28 @@ public class QTESystem : MonoBehaviour
             QTEManager.Instance.HideQTE();
         }
         
+        // Возобновляем таймер хода после завершения QTE
+        if (CameraManager.Instance != null)
+        {
+            CameraManager.Instance.ResumeTimer();
+        }
+        
+        // Показываем HUD экшен-режима обратно (если мы все еще в экшен-режиме)
+        if (CameraManager.Instance != null && CameraManager.Instance.IsActionMode())
+        {
+            if (ActionModeUI.Instance != null)
+            {
+                ActionModeUI.Instance.ShowHUD();
+            }
+        }
+        
         // Сбрасываем состояние
         isQTEActive = false;
         playerUnit = null;
         enemyUnit = null;
         currentQTECoroutine = null;
+        qteSequence.Clear();
+        currentKeyIndex = 0;
     }
     
     /// <summary>
@@ -198,16 +275,32 @@ public class QTESystem : MonoBehaviour
         }
         isQTEActive = false;
         
+        // Возобновляем таймер хода при отмене QTE
+        if (CameraManager.Instance != null)
+        {
+            CameraManager.Instance.ResumeTimer();
+        }
+        
         // Скрываем UI QTE
         if (QTEManager.Instance != null)
         {
             QTEManager.Instance.HideQTE();
         }
         
+        // Показываем HUD экшен-режима обратно (если мы все еще в экшен-режиме)
+        if (CameraManager.Instance != null && CameraManager.Instance.IsActionMode())
+        {
+            if (ActionModeUI.Instance != null)
+            {
+                ActionModeUI.Instance.ShowHUD();
+            }
+        }
+        
         // Сбрасываем ссылки на юниты
         playerUnit = null;
         enemyUnit = null;
-        currentQTEKey = QTEKey.Z; // Сброс клавиши
+        qteSequence.Clear();
+        currentKeyIndex = 0;
     }
     
     /// <summary>
@@ -228,6 +321,17 @@ public class QTESystem : MonoBehaviour
             default:
                 return false;
         }
+    }
+    
+    /// <summary>
+    /// Проверяет, была ли нажата любая клавиша QTE (Z, X или C)
+    /// </summary>
+    /// <returns>true если любая клавиша QTE была нажата в этом кадре</returns>
+    private bool IsAnyQTEKeyPressed()
+    {
+        return Keyboard.current.zKey.wasPressedThisFrame ||
+               Keyboard.current.xKey.wasPressedThisFrame ||
+               Keyboard.current.cKey.wasPressedThisFrame;
     }
 }
 

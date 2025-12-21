@@ -19,6 +19,7 @@ public class Unit : MonoBehaviour
 
     private CharacterController controller;
     [SerializeField] private float moveSpeed = 5f;
+    public float MoveSpeed => moveSpeed; // Публичное свойство для доступа к скорости
     [SerializeField] private float gravity = -9.81f;
     [SerializeField] private float mouseSensitivity = 0.1f;
     [SerializeField] private float maxVerticalAngle = 80f;
@@ -228,7 +229,10 @@ public class Unit : MonoBehaviour
         }
     }
 
-    private void Attack()
+    /// <summary>
+    /// Выполняет атаку (публичный метод для использования ботом и игроком)
+    /// </summary>
+    public void Attack()
     {
         if (animator != null)
         {
@@ -383,11 +387,6 @@ public class Unit : MonoBehaviour
             {
                 ruleIntegrityPoints -= integrityCostPerCell;
                 ruleIntegrityPoints = Mathf.Max(0f, ruleIntegrityPoints);
-                
-                if (Debug.isDebugBuild)
-                {
-                    Debug.LogWarning($"❌ ILLEGAL CELL TRANSITION! {chessType}. From: {ChessGrid.Instance.GridToChessNotation(lastCheckedGridPosition.x, lastCheckedGridPosition.y)} -> To: {ChessGrid.Instance.GridToChessNotation(currentGridPosition.x, currentGridPosition.y)}. Deducted {integrityCostPerCell} points.");
-                }
             }
             
             // Обновляем последнюю проверенную позицию
@@ -687,5 +686,118 @@ public class Unit : MonoBehaviour
         // Уничтожаем временный объект после проигрывания звука
         Destroy(tempSoundObject, unitDeathSound.length + 0.1f);
     }
+    
+    /// <summary>
+    /// Перемещает юнита к указанной позиции сетки плавно (для использования ботом)
+    /// </summary>
+    /// <param name="targetPos">Целевая позиция на сетке</param>
+    public void MoveToGridPosition(Vector2Int targetPos)
+    {
+        if (ChessGrid.Instance == null) return;
+        
+        Vector3 targetWorldPos = ChessGrid.Instance.GridToWorldPosition(targetPos.x, targetPos.y);
+        
+        // Запускаем корутину для плавного перемещения
+        StartCoroutine(MoveToPositionCoroutine(targetWorldPos, targetPos));
+    }
+    
+    /// <summary>
+    /// Корутина для плавного перемещения юнита к целевой позиции
+    /// </summary>
+    private IEnumerator MoveToPositionCoroutine(Vector3 targetWorldPos, Vector2Int targetGridPos)
+    {
+        Vector3 startPos = transform.position;
+        float distance = Vector3.Distance(startPos, targetWorldPos);
+        // Получаем скорость движения (используем публичное свойство или поле)
+        float unitMoveSpeed = moveSpeed;
+        float duration = distance / unitMoveSpeed; // Время движения зависит от расстояния и скорости
+        duration = Mathf.Clamp(duration, 0.5f, 3f); // Увеличиваем максимальное время для плавности
+        
+        float elapsedTime = 0f;
+        
+        // Включаем анимацию движения
+        if (animator != null)
+        {
+            animator.SetFloat("Speed", 1f);
+        }
+        
+        // Поворачиваем юнита к цели
+        Vector3 direction = (targetWorldPos - startPos).normalized;
+        direction.y = 0;
+        if (direction != Vector3.zero)
+        {
+            transform.rotation = Quaternion.LookRotation(direction);
+        }
+        
+        // Плавное перемещение
+        while (elapsedTime < duration)
+        {
+            elapsedTime += Time.deltaTime;
+            float t = elapsedTime / duration;
+            
+            // Используем CharacterController для перемещения
+            if (controller != null && controller.enabled)
+            {
+                Vector3 currentPos = Vector3.Lerp(startPos, targetWorldPos, t);
+                Vector3 moveVector = currentPos - transform.position;
+                moveVector.y = 0; // Игнорируем вертикальное движение
+                controller.Move(moveVector);
+            }
+            else
+            {
+                transform.position = Vector3.Lerp(startPos, targetWorldPos, t);
+            }
+            
+            yield return null;
+        }
+        
+        // Финальная позиция (точно на сетке)
+        if (controller != null)
+        {
+            controller.enabled = false;
+            transform.position = targetWorldPos;
+            controller.enabled = true;
+        }
+        else
+        {
+            transform.position = targetWorldPos;
+        }
+        
+        // Обновляем позицию на сетке
+        currentGridPosition = targetGridPos;
+        SnapToGrid();
+        
+        // Останавливаем анимацию движения
+        if (animator != null)
+        {
+            animator.SetFloat("Speed", 0f);
+        }
+    }
+    
+    /// <summary>
+    /// Находит ближайшего вражеского юнита (для использования ботом)
+    /// </summary>
+    /// <returns>Ближайший вражеский юнит или null, если не найден</returns>
+    public Unit GetNearestEnemy()
+    {
+        Unit[] allUnits = FindObjectsByType<Unit>(FindObjectsSortMode.None);
+        Unit nearestEnemy = null;
+        float nearestDistance = float.MaxValue;
+        
+        foreach (Unit enemy in allUnits)
+        {
+            if (enemy == null || enemy.owner == this.owner || enemy.GetHealth() <= 0) continue;
+            
+            float distance = Vector3.Distance(transform.position, enemy.transform.position);
+            if (distance < nearestDistance)
+            {
+                nearestDistance = distance;
+                nearestEnemy = enemy;
+            }
+        }
+        
+        return nearestEnemy;
+    }
+    
     
 }

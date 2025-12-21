@@ -8,7 +8,7 @@ public class ChessGrid : MonoBehaviour
     [Header("Настройки сетки")]
     [SerializeField] public int width = 8;
     [SerializeField] public int height = 8;
-    [SerializeField] private float cellSize = 2.0f; // Размер одной клетки в метрах Unity
+    [SerializeField] public float cellSize = 2.0f; // Размер одной клетки в метрах Unity
     [SerializeField] private Vector3 originPosition = Vector3.zero; // Где начинается клетка A1
 
     [Header("Визуализация")]

@@ -20,6 +20,10 @@ public class MainMenu : MonoBehaviour
     [SerializeField] private Slider musicVolumeSlider; // Слайдер громкости музыки
     [SerializeField] private Slider sfxVolumeSlider; // Слайдер громкости звуковых эффектов
     
+    [Header("Game Mode Selection")]
+    [SerializeField] private GameObject gameModePanel; // Панель выбора режима игры
+    [SerializeField] private GameObject mainMenuPanel; // Основная панель меню
+    
     // Временные значения громкости (до применения)
     private float tempMusicVolume = 1f;
     private float tempSFXVolume = 1f;
@@ -27,7 +31,57 @@ public class MainMenu : MonoBehaviour
     public void PlayGame()
     {
         PlayButtonClickSound();
+        // Показываем панель выбора режима игры вместо прямой загрузки сцены
+        if (gameModePanel != null)
+        {
+            gameModePanel.SetActive(true);
+            if (mainMenuPanel != null)
+            {
+                mainMenuButtons.SetActive(false);
+            }
+        }
+        else
+        {
+            // Если панель не назначена, загружаем сцену напрямую (режим по умолчанию)
+            GameManager.SetGameMode(GameMode.PlayerVsPlayer);
+            SceneManager.LoadScene("SampleScene");
+        }
+    }
+    
+    /// <summary>
+    /// Запускает игру против игрока
+    /// </summary>
+    public void StartPlayerVsPlayer()
+    {
+        PlayButtonClickSound();
+        GameManager.SetGameMode(GameMode.PlayerVsPlayer);
         SceneManager.LoadScene("SampleScene");
+    }
+    
+    /// <summary>
+    /// Запускает игру против бота
+    /// </summary>
+    public void StartPlayerVsBot()
+    {
+        PlayButtonClickSound();
+        GameManager.SetGameMode(GameMode.PlayerVsBot);
+        SceneManager.LoadScene("SampleScene");
+    }
+    
+    /// <summary>
+    /// Возвращается к главному меню из панели выбора режима
+    /// </summary>
+    public void BackToMainMenu()
+    {
+        PlayButtonClickSound();
+        if (gameModePanel != null)
+        {
+            gameModePanel.SetActive(false);
+        }
+        if (mainMenuButtons != null)
+        {
+            mainMenuButtons.SetActive(true);
+        }
     }
 
     public void QuitGame()
@@ -130,6 +184,12 @@ public class MainMenu : MonoBehaviour
         if (settingsPanel != null)
         {
             settingsPanel.SetActive(false);
+        }
+        
+        // Закрываем панель выбора режима игры при старте
+        if (gameModePanel != null)
+        {
+            gameModePanel.SetActive(false);
         }
         
         // Применяем сохраненные настройки громкости к музыке главного меню

@@ -4,11 +4,19 @@ using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 
 public enum Player { Player1, Player2 }
+public enum GameMode { PlayerVsPlayer, PlayerVsBot }
 
 public class GameManager : MonoBehaviour
 {
     public static GameManager Instance;
     public Player currentPlayer = Player.Player1;
+    private static GameMode gameMode = GameMode.PlayerVsPlayer;
+    private static bool gameModeSetFromMenu = false; // Флаг, что режим был установлен из меню
+    
+    [Header("Game Mode (для тестирования)")]
+    [Tooltip("Режим игры для тестирования. Используется только если игра запущена напрямую в SampleScene (не из MainMenu)")]
+    [SerializeField] private GameMode testGameMode = GameMode.PlayerVsPlayer;
+    
     [Header("UI End Game")]
     [SerializeField] private GameObject gameOverPanel; // Ссылка на панель
     [SerializeField] private TextMeshProUGUI winnerText; // Ссылка на текст
@@ -36,6 +44,17 @@ public class GameManager : MonoBehaviour
             Destroy(gameObject);
         }
     }
+    
+    void Start()
+    {
+        // Если режим не был установлен из MainMenu, используем режим из Inspector
+        // Это позволяет тестировать режимы, запуская SampleScene напрямую
+        if (!gameModeSetFromMenu)
+        {
+            gameMode = testGameMode;
+            Debug.Log($"Режим игры установлен из Inspector: {testGameMode}");
+        }
+    }
     public void EndGame(Player loser)
     {
         if (isGameOver) return; // Чтобы не вызвать дважды
@@ -49,18 +68,40 @@ public class GameManager : MonoBehaviour
         // Включаем панель
         if (gameOverPanel != null) gameOverPanel.SetActive(true);
 
-        // Определяем победителя
+        // Определяем победителя и сообщение в зависимости от режима игры
         string resultMessage = "";
-        Player winner = Player.Player1;
-        if (loser == Player.Player1)
+        Player winner = (loser == Player.Player1) ? Player.Player2 : Player.Player1;
+        bool isPlayerVictory = false; // Победил ли игрок (Player1)
+        
+        if (gameMode == GameMode.PlayerVsBot)
         {
-            resultMessage = "ПОБЕДА ИГРОКА 2!";
-            winner = Player.Player2;
+            // Режим игры против бота
+            if (loser == Player.Player1)
+            {
+                // Игрок проиграл (бот победил)
+                resultMessage = "ПОРАЖЕНИЕ";
+                isPlayerVictory = false;
+            }
+            else
+            {
+                // Игрок победил (бот проиграл)
+                resultMessage = "ПОБЕДА!";
+                isPlayerVictory = true;
+            }
         }
         else
         {
-            resultMessage = "ПОБЕДА ИГРОКА 1!";
-            winner = Player.Player1;
+            // Режим игры против игрока
+            if (loser == Player.Player1)
+            {
+                resultMessage = "ПОБЕДА ИГРОКА 2!";
+                isPlayerVictory = false;
+            }
+            else
+            {
+                resultMessage = "ПОБЕДА ИГРОКА 1!";
+                isPlayerVictory = true;
+            }
         }
 
         if (winnerText != null) winnerText.text = resultMessage;
@@ -68,14 +109,29 @@ public class GameManager : MonoBehaviour
         // Воспроизводим музыку победы/поражения
         if (AudioManager.Instance != null)
         {
-            // Определяем, кто выиграл (текущий игрок или противник)
-            if (winner == currentPlayer)
+            if (gameMode == GameMode.PlayerVsBot)
             {
-                AudioManager.Instance.PlayVictoryMusic();
+                // В режиме против бота: для игрока (Player1) победа = победа, поражение = поражение
+                if (isPlayerVictory)
+                {
+                    AudioManager.Instance.PlayVictoryMusic();
+                }
+                else
+                {
+                    AudioManager.Instance.PlayDefeatMusic();
+                }
             }
             else
             {
-                AudioManager.Instance.PlayDefeatMusic();
+                // В режиме против игрока: музыка зависит от того, кто выиграл относительно текущего игрока
+                if (winner == currentPlayer)
+                {
+                    AudioManager.Instance.PlayVictoryMusic();
+                }
+                else
+                {
+                    AudioManager.Instance.PlayDefeatMusic();
+                }
             }
         }
         
@@ -124,6 +180,16 @@ public class GameManager : MonoBehaviour
         {
             pauseMenuButtons.SetActive(true);
         }
+        
+        // Скрываем весь HUD при паузе
+        if (ActionModeUI.Instance != null)
+        {
+            ActionModeUI.Instance.HideHUD();
+        }
+        if (TacticalModeUI.Instance != null)
+        {
+            TacticalModeUI.Instance.HideHUD();
+        }
     }
 
     // НОВОЕ: Метод продолжения (для кнопки "Продолжить")
@@ -134,6 +200,17 @@ public class GameManager : MonoBehaviour
         isPaused = false;
         if (pausePanel != null) pausePanel.SetActive(false);
         Time.timeScale = 1f;
+        
+        // Показываем HUD при возобновлении игры
+        if (ActionModeUI.Instance != null)
+        {
+            ActionModeUI.Instance.ShowHUD();
+        }
+        if (TacticalModeUI.Instance != null)
+        {
+            TacticalModeUI.Instance.ShowHUD();
+        }
+        
         // Восстанавливаем состояние курсора в зависимости от режима
         if (CameraManager.Instance != null)
         {
@@ -171,6 +248,37 @@ public class GameManager : MonoBehaviour
         }
         
         Debug.Log($"Ход перешёл к {currentPlayer}");
+        
+        // Если это ход бота, запускаем его автоматически
+        if (IsBotTurn() && BotController.Instance != null)
+        {
+            BotController.Instance.ExecuteBotTurn();
+        }
+    }
+    
+    /// <summary>
+    /// Устанавливает режим игры (вызывается из MainMenu)
+    /// </summary>
+    public static void SetGameMode(GameMode mode)
+    {
+        gameMode = mode;
+        gameModeSetFromMenu = true; // Помечаем, что режим установлен из меню
+    }
+    
+    /// <summary>
+    /// Получает текущий режим игры (для UI и отладки)
+    /// </summary>
+    public GameMode GetGameMode()
+    {
+        return gameMode;
+    }
+    
+    /// <summary>
+    /// Проверяет, является ли текущий ход ботом
+    /// </summary>
+    public bool IsBotTurn()
+    {
+        return gameMode == GameMode.PlayerVsBot && currentPlayer == Player.Player2;
     }
     public bool IsPaused() => isPaused;
     

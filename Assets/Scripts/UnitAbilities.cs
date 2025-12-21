@@ -330,5 +330,20 @@ public class UnitAbilities : MonoBehaviour
     {
         return GetAbilityCooldown() == 0;
     }
+    
+    /// <summary>
+    /// Устанавливает КД для способности (для использования ботом)
+    /// </summary>
+    public void SetAbilityCooldown(int turns)
+    {
+        switch (unit.chessType)
+        {
+            case ChessUnitType.Horse: cooldownHorseJump = turns; break;
+            case ChessUnitType.Bishop: cooldownBishopReflection = turns; break;
+            case ChessUnitType.Guardian: cooldownGuardianShield = turns; break;
+            case ChessUnitType.Queen: cooldownQueenDamageBoost = turns; break;
+            case ChessUnitType.King: cooldownKingHeal = turns; break;
+        }
+    }
 }
 

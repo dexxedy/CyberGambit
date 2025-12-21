@@ -29,10 +29,21 @@ public class ActionModeUI : MonoBehaviour
     [SerializeField] private TextMeshProUGUI abilityCooldownText; // КД способности
     [SerializeField] private TextMeshProUGUI abilityDescriptionText; // Описание способности
     
+    [Header("Action Mode Stats")]
+    [SerializeField] private GameObject timerPanel; // Панель с таймером
+    [SerializeField] private TextMeshProUGUI timerText; // Текст таймера
+    [SerializeField] private GameObject healthPanel; // Панель с HP
+    [SerializeField] private TextMeshProUGUI healthText; // Текст HP
+    [SerializeField] private GameObject integrityPanel; // Панель с очками перемещения
+    [SerializeField] private TextMeshProUGUI integrityText; // Текст очков перемещения
+    
+    [Header("HUD Container")]
+    [SerializeField] private GameObject actionHUDContainer; // Родительский GameObject для всего HUD экшен-режима
+    
     [Header("Settings")]
     [SerializeField] private float raycastDistance = 50f; // Дистанция raycast
     [SerializeField] private float updateInterval = 0.1f; // Как часто обновлять UI (в секундах)
-    [SerializeField] private Color readyColor = Color.green; // Цвет когда способность готова
+    [SerializeField] private Color readyColor = Color.skyBlue; // Цвет когда способность готова
     [SerializeField] private Color cooldownColor = Color.red; // Цвет когда на КД
     
     private Camera actionCamera;
@@ -57,10 +68,19 @@ public class ActionModeUI : MonoBehaviour
             enemyHealthPanel.SetActive(false);
         if (abilityPanel != null)
             abilityPanel.SetActive(false);
+        
+        // Скрываем панели статистики по умолчанию
+        HideStatsPanels();
     }
     
     void Update()
     {
+        // Проверяем паузу - если игра на паузе, не обновляем HUD
+        if (GameManager.Instance != null && GameManager.Instance.IsPaused())
+        {
+            return;
+        }
+        
         // Работаем только в экшен-режиме
         if (CameraManager.Instance != null && CameraManager.Instance.IsActionMode())
         {
@@ -82,6 +102,9 @@ public class ActionModeUI : MonoBehaviour
             
             // Обновляем информацию о способности
             UpdateAbilityInfo();
+            
+            // Обновляем статистику (таймер, HP, очки перемещения)
+            UpdateStats();
         }
         else
         {
@@ -308,6 +331,53 @@ public class ActionModeUI : MonoBehaviour
     }
     
     /// <summary>
+    /// Обновляет статистику (таймер, HP, очки перемещения)
+    /// </summary>
+    private void UpdateStats()
+    {
+        Unit controlledUnit = CameraManager.Instance.GetCurrentControlledUnit();
+        
+        // Обновляем таймер
+        if (timerText != null && CameraManager.Instance != null)
+        {
+            float remainingTime = CameraManager.Instance.GetRemainingTime();
+            timerText.text = $"Осталось: {remainingTime:F1} сек";
+        }
+        
+        // Обновляем HP
+        if (healthText != null && controlledUnit != null)
+        {
+            healthText.text = $"HP: {controlledUnit.GetHealth()}";
+        }
+        
+        // Обновляем очки перемещения
+        if (integrityText != null && controlledUnit != null)
+        {
+            integrityText.text = $"Очки перемещения: {controlledUnit.GetRuleIntegrityPoints():F0}";
+        }
+    }
+    
+    /// <summary>
+    /// Показывает панели статистики (вызывается при входе в экшен-режим)
+    /// </summary>
+    public void ShowStatsPanels()
+    {
+        if (timerPanel != null) timerPanel.SetActive(true);
+        if (healthPanel != null) healthPanel.SetActive(true);
+        if (integrityPanel != null) integrityPanel.SetActive(true);
+    }
+    
+    /// <summary>
+    /// Скрывает панели статистики (вызывается при выходе из экшен-режима)
+    /// </summary>
+    public void HideStatsPanels()
+    {
+        if (timerPanel != null) timerPanel.SetActive(false);
+        if (healthPanel != null) healthPanel.SetActive(false);
+        if (integrityPanel != null) integrityPanel.SetActive(false);
+    }
+    
+    /// <summary>
     /// Скрывает весь UI
     /// </summary>
     private void HideAllUI()
@@ -318,6 +388,8 @@ public class ActionModeUI : MonoBehaviour
             enemyHealthPanel.SetActive(false);
         if (abilityPanel != null && abilityPanel.activeSelf)
             abilityPanel.SetActive(false);
+        
+        HideStatsPanels();
         
         currentTarget = null;
         currentUnit = null;
@@ -392,6 +464,34 @@ public class ActionModeUI : MonoBehaviour
             case ChessUnitType.King: return 4;
             default: return 0;
         }
+    }
+    
+    /// <summary>
+    /// Скрывает весь HUD экшен-режима (вызывается при паузе)
+    /// </summary>
+    public void HideHUD()
+    {
+        if (actionHUDContainer != null)
+        {
+            actionHUDContainer.SetActive(false);
+        }
+        else
+        {
+            // Если контейнер не назначен, скрываем все элементы вручную
+            HideAllUI();
+        }
+    }
+    
+    /// <summary>
+    /// Показывает HUD экшен-режима (вызывается при возобновлении игры)
+    /// </summary>
+    public void ShowHUD()
+    {
+        if (actionHUDContainer != null)
+        {
+            actionHUDContainer.SetActive(true);
+        }
+        // Элементы будут показаны автоматически в Update() когда войдём в экшен-режим
     }
 }
 
