@@ -14,7 +14,6 @@ public class UnitColorController : MonoBehaviour
         
         if (allUnits.Length == 0)
         {
-            Debug.LogWarning("UnitColorInitializer: Юниты на сцене не найдены.");
             return;
         }
 
@@ -41,7 +40,7 @@ public class UnitColorController : MonoBehaviour
             }
             else
             {
-                Debug.LogWarning($"Unit {unit.gameObject.name} не имеет компонента Renderer, цвет не применен.");
+                // Unit не имеет компонента Renderer, цвет не применен
             }
         }
     }

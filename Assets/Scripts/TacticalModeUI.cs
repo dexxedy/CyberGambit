@@ -2,6 +2,7 @@ using UnityEngine;
 using UnityEngine.InputSystem;
 using TMPro;
 using UnityEngine.UI;
+using System.Collections;
 
 /// <summary>
 /// Управляет UI в тактическом режиме:
@@ -24,6 +25,12 @@ public class TacticalModeUI : MonoBehaviour
     [SerializeField] private GameObject turnPanel; // Панель с информацией о текущем ходе
     [SerializeField] private TextMeshProUGUI turnText; // Текст "Ход Игрока 1" или "Ход Игрока 2"
     
+    [Header("Tutorial/Instructions Panel")]
+    [SerializeField] private GameObject instructionsPanel; // Панель с инструкциями
+    [SerializeField] private TextMeshProUGUI instructionsText; // Текст инструкций
+    [SerializeField] private Button closeInstructionsButton; // Кнопка закрытия (опционально)
+    [SerializeField] private float autoHideDelay = 8f; // Автоматически скрыть через N секунд (0 = не скрывать)
+    
     [Header("HUD Container")]
     [SerializeField] private GameObject tacticalHUDContainer; // Родительский GameObject для всего HUD тактического режима
     
@@ -33,6 +40,7 @@ public class TacticalModeUI : MonoBehaviour
     
     private Unit currentHoveredUnit = null;
     private Camera tacticalCamera;
+    private bool hasShownInstructions = false; // Флаг, показывали ли уже инструкции
     
     void Awake()
     {
@@ -51,6 +59,9 @@ public class TacticalModeUI : MonoBehaviour
         
         // Инициализация панели хода
         UpdateTurnPanel();
+        
+        // Показываем инструкции при первом запуске
+        ShowInstructions();
     }
     
     void Update()
@@ -247,16 +258,13 @@ public class TacticalModeUI : MonoBehaviour
     {
         if (turnPanel == null || turnText == null) return;
         
-        // Проверяем режим игры - показываем только в PvP
         if (GameManager.Instance != null)
         {
-            bool isPvPMode = GameManager.Instance.GetGameMode() == GameMode.PlayerVsPlayer;
-            
-            // Показываем панель только в режиме PvP и в тактическом режиме
-            bool shouldShow = isPvPMode;
+            // Показываем панель в тактическом режиме (и в PvP, и против бота)
+            bool shouldShow = true;
             if (CameraManager.Instance != null)
             {
-                shouldShow = shouldShow && !CameraManager.Instance.IsActionMode();
+                shouldShow = !CameraManager.Instance.IsActionMode();
             }
             
             turnPanel.SetActive(shouldShow);
@@ -265,13 +273,23 @@ public class TacticalModeUI : MonoBehaviour
             {
                 // Обновляем текст на русском
                 Player currentPlayer = GameManager.Instance.currentPlayer;
+                GameMode gameMode = GameManager.Instance.GetGameMode();
+                
                 if (currentPlayer == Player.Player1)
                 {
-                    turnText.text = "Ход Игрока 1";
+                    turnText.text = "Ваш Ход";
                 }
                 else
                 {
-                    turnText.text = "Ход Игрока 2";
+                    // В режиме против бота показываем "Ход Бота", в PvP - "Ход Игрока 2"
+                    if (gameMode == GameMode.PlayerVsBot)
+                    {
+                        turnText.text = "Ход Бота";
+                    }
+                    else
+                    {
+                        turnText.text = "Ход Игрока 2";
+                    }
                 }
             }
         }
@@ -280,6 +298,75 @@ public class TacticalModeUI : MonoBehaviour
             // Если GameManager не найден, скрываем панель
             turnPanel.SetActive(false);
         }
+    }
+    
+    /// <summary>
+    /// Показывает панель с инструкциями для игрока
+    /// </summary>
+    private void ShowInstructions()
+    {
+        if (instructionsPanel == null || hasShownInstructions) return;
+        
+        hasShownInstructions = true;
+        instructionsPanel.SetActive(true);
+        
+        // Устанавливаем текст инструкций
+        if (instructionsText != null)
+        {
+            GameMode gameMode = GameManager.Instance != null ? GameManager.Instance.GetGameMode() : GameMode.PlayerVsPlayer;
+            
+            string introText = "ЦЕЛЬ ИГРЫ:\n\n" +
+                               "Уничтожьте короля противника, не дав ему сделать то же самое с вашим королем.\n\n" +
+                               "КАК ИГРАТЬ:\n\n" +
+                               "• Кликните на своего юнита, чтобы выбрать его\n" +
+                               "• Вы перейдете в режим от первого лица\n" +
+                               "• Управляйте юнитом и атакуйте врагов\n\n";
+            
+            if (gameMode == GameMode.PlayerVsBot)
+            {
+                introText += "Вы играете против бота. Ходы чередуются.";
+            }
+            else
+            {
+                introText += "Вы играете против другого игрока. Ходы чередуются.";
+            }
+            
+            
+            instructionsText.text = introText;
+        }
+        
+        // Настраиваем кнопку закрытия
+        if (closeInstructionsButton != null)
+        {
+            closeInstructionsButton.onClick.RemoveAllListeners();
+            closeInstructionsButton.onClick.AddListener(HideInstructions);
+        }
+        
+        // Автоматически скрываем через указанное время
+        if (autoHideDelay > 0f)
+        {
+            StartCoroutine(AutoHideInstructions());
+        }
+    }
+    
+    /// <summary>
+    /// Скрывает панель инструкций
+    /// </summary>
+    public void HideInstructions()
+    {
+        if (instructionsPanel != null)
+        {
+            instructionsPanel.SetActive(false);
+        }
+    }
+    
+    /// <summary>
+    /// Автоматически скрывает инструкции через указанное время
+    /// </summary>
+    private IEnumerator AutoHideInstructions()
+    {
+        yield return new WaitForSeconds(autoHideDelay);
+        HideInstructions();
     }
     
     /// <summary>
@@ -301,6 +388,10 @@ public class TacticalModeUI : MonoBehaviour
             if (turnPanel != null)
             {
                 turnPanel.SetActive(false);
+            }
+            if (instructionsPanel != null)
+            {
+                instructionsPanel.SetActive(false);
             }
         }
     }

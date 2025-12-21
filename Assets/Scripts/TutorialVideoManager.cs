@@ -65,10 +65,6 @@ public class TutorialVideoManager : MonoBehaviour
         {
             LoadVideo(0);
         }
-        else
-        {
-            Debug.LogWarning("TutorialVideoManager: Нет видео для воспроизведения!");
-        }
     }
     
     void OnEnable()
@@ -101,19 +97,16 @@ public class TutorialVideoManager : MonoBehaviour
     {
         if (tutorialVideos == null || tutorialVideos.Length == 0)
         {
-            Debug.LogWarning("TutorialVideoManager: Нет доступных видео!");
             return;
         }
         
         if (index < 0 || index >= tutorialVideos.Length)
         {
-            Debug.LogWarning($"TutorialVideoManager: Неверный индекс видео {index}. Доступно видео: {tutorialVideos.Length}");
             return;
         }
         
         if (tutorialVideos[index] == null)
         {
-            Debug.LogWarning($"TutorialVideoManager: Видео с индексом {index} равно null!");
             return;
         }
         

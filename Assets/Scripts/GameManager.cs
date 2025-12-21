@@ -52,7 +52,6 @@ public class GameManager : MonoBehaviour
         if (!gameModeSetFromMenu)
         {
             gameMode = testGameMode;
-            Debug.Log($"Режим игры установлен из Inspector: {testGameMode}");
         }
     }
     public void EndGame(Player loser)
@@ -246,8 +245,6 @@ public class GameManager : MonoBehaviour
         {
             AbilitySystem.Instance.OnTurnSwitch();
         }
-        
-        Debug.Log($"Ход перешёл к {currentPlayer}");
         
         // Если это ход бота, запускаем его автоматически
         if (IsBotTurn() && BotController.Instance != null)

@@ -19,7 +19,6 @@ public class BotController : MonoBehaviour
     [SerializeField] private float attackDelay = 0.3f;
     [SerializeField] private float attackRange = 3.0f; // Увеличен радиус атаки
     [SerializeField] private float enemyDetectionRange = 8.0f; // Радиус обнаружения врагов (4 клетки, больше радиуса атаки)
-    [SerializeField] private float threatZoneRadius = 2.5f; // Радиус для автоатак от врага
     [SerializeField] private float approachDistance = 2.0f; // Насколько близко бот может подойти к врагу после перемещения на клетку
     
     [Header("QTE Settings")]
@@ -225,7 +224,6 @@ public class BotController : MonoBehaviour
         Unit selectedUnit = SelectBestUnit(gameMode);
         if (selectedUnit == null)
         {
-            Debug.LogWarning("Бот: Нет доступных юнитов!");
             // Возвращаем камеру на исходную позицию, если она следовала за юнитом
             if (CameraManager.Instance != null)
             {
@@ -710,8 +708,7 @@ public class BotController : MonoBehaviour
             // ДВИЖЕНИЕ
             yield return StartCoroutine(MoveUnitToPosition(unit, moveTarget.Value, targetWorldPos));
             
-            // ПРОВЕРКА АВТОАТАК - когда бот подходит к врагам игрока
-            yield return StartCoroutine(CheckEnemyAutoAttacks(unit));
+            // Автоатака отключена - QTE теперь запускается только при атаке бота на юнит игрока
         }
         else
         {
@@ -719,54 +716,7 @@ public class BotController : MonoBehaviour
         }
     }
     
-    /// <summary>
-    /// Проверяет автоатаки от врагов при приближении бота
-    /// </summary>
-    private IEnumerator CheckEnemyAutoAttacks(Unit botUnit)
-    {
-        if (botUnit == null) yield break;
-        
-        Unit[] allUnits = FindObjectsByType<Unit>(FindObjectsSortMode.None);
-        List<Unit> playerUnits = allUnits
-            .Where(u => u != null && u.owner == Player.Player1 && u.GetHealth() > 0)
-            .Where(u => !enemiesThatAttackedThisTurn.Contains(u))
-            .ToList();
-        
-        foreach (Unit playerUnit in playerUnits)
-        {
-            float distance = GetDistance(botUnit, playerUnit);
-            
-            // Если бот вошёл в зону угрозы юнита игрока
-            if (distance <= threatZoneRadius)
-            {
-                enemiesThatAttackedThisTurn.Add(playerUnit);
-                
-                // Юнит игрока разворачивается к боту
-                RotateTowardsTarget(playerUnit, botUnit.transform.position);
-                yield return new WaitForSeconds(0.2f);
-                
-                // Юнит игрока атакует
-                Animator playerAnimator = playerUnit.GetComponent<Animator>();
-                if (playerAnimator != null)
-                {
-                    playerAnimator.SetTrigger("Attack");
-                }
-                
-                yield return new WaitForSeconds(0.3f);
-                
-                // Бот получает урон (без возможности блокировать)
-                botUnit.TakeDamage(playerUnit.Damage, playerUnit);
-                
-                // Проверяем жив ли бот
-                if (botUnit.GetHealth() <= 0)
-                {
-                    yield break;
-                }
-                
-                yield return new WaitForSeconds(0.5f);
-            }
-        }
-    }
+    // Автоатака отключена - QTE теперь запускается только при атаке бота на юнит игрока
     
     /// <summary>
     /// Плавное перемещение юнита с возможностью дополнительного приближения к врагу
@@ -1246,7 +1196,6 @@ public class BotController : MonoBehaviour
     {
         if (attacker == null || target == null)
         {
-            Debug.LogWarning("Бот: Попытка атаки с null юнитом!");
             yield break;
         }
         
@@ -1262,7 +1211,6 @@ public class BotController : MonoBehaviour
         // Проверяем расстояние после попытки приближения
         if (distance > attackRange * 1.1f) // Небольшой запас для погрешности
         {
-            Debug.LogWarning($"Бот: {target.chessType} слишком далеко ({distance:F2} > {attackRange * 1.1f}) - атака отменена!");
             yield break;
         }
         
@@ -1303,9 +1251,42 @@ public class BotController : MonoBehaviour
         }
         
         // АТАКА!
-        attacker.Attack();
-        
-        yield return new WaitForSeconds(1.0f);
+        // Если цель - юнит игрока, пытаемся запустить QTE
+        bool qteWasTriggered = false;
+        if (target.owner == Player.Player1 && QTESystem.Instance != null)
+        {
+            // Пытаемся запустить QTE (с шансом)
+            // QTE система сама запустит анимацию атаки, остановит время и заморозит её
+            qteWasTriggered = QTESystem.Instance.StartQTE(target, attacker);
+            
+            if (qteWasTriggered)
+            {
+                // QTE запущен - ждем его завершения
+                // Время остановлено, анимация атаки застыла на начальных кадрах
+                // Ждем, пока QTE не завершится
+                while (QTESystem.Instance.IsQTEActive())
+                {
+                    yield return null;
+                }
+                
+                // После завершения QTE проверяем, была ли атака заблокирована
+                // Если атака была заблокирована, анимация уже отменена в QTESystem
+                // Если атака не была заблокирована, анимация продолжается и урон будет нанесен через WeaponCollider
+                yield return new WaitForSeconds(0.5f); // Небольшая задержка для завершения анимации (если она не была отменена)
+            }
+            else
+            {
+                // QTE не запустился - атакуем как обычно
+                attacker.Attack();
+                yield return new WaitForSeconds(1.0f);
+            }
+        }
+        else
+        {
+            // Цель не юнит игрока или QTE система недоступна - атакуем как обычно
+            attacker.Attack();
+            yield return new WaitForSeconds(1.0f);
+        }
     }
     
     // ========================================================================

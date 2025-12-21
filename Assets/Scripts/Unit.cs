@@ -77,16 +77,7 @@ public class Unit : MonoBehaviour
         controller = GetComponent<CharacterController>();
         if (controller == null)
         {
-           // Debug.LogError($"Unit {gameObject.name}: CharacterController missing!");
             return;
-        }
-        if (cameraAttachPoint == null)
-        {
-            //Debug.LogError($"Unit {gameObject.name}: CameraAttachPoint not assigned!");
-        }
-        if (gameObject.layer != LayerMask.NameToLayer("Units"))
-        {
-            //Debug.LogWarning($"Unit {gameObject.name}: Ensure layer is set to 'Units'!");
         }
         animator = GetComponent<Animator>();
         if (ChessGrid.Instance != null)
@@ -153,19 +144,11 @@ public class Unit : MonoBehaviour
     public void OnMove(InputAction.CallbackContext context)
     {
         moveInput = context.ReadValue<Vector2>();
-        if (isControlled && moveInput != Vector2.zero)
-        {
-            //Debug.Log($"Unit {gameObject.name}: Move Input = {moveInput}");
-        }
     }
 
     public void OnLook(InputAction.CallbackContext context)
     {
         lookInput = context.ReadValue<Vector2>();
-        if (isControlled && lookInput != Vector2.zero)
-        {
-            //Debug.Log($"Unit {gameObject.name}: Look Input = {lookInput}");
-        }
     }
 
     public void OnFire(InputAction.CallbackContext context)
@@ -193,7 +176,6 @@ public class Unit : MonoBehaviour
 
         if (!controller.enabled)
         {
-            Debug.LogWarning($"Unit {gameObject.name}: CharacterController is disabled!");
             return;
         }
         HandleMovementCost();
@@ -453,7 +435,6 @@ public class Unit : MonoBehaviour
                 }
             }
         }
-        //Debug.Log($"Unit {gameObject.name}: Controlled = {isControlled}");
     }
 
 

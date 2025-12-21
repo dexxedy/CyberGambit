@@ -41,20 +41,18 @@ public class QTEManager : MonoBehaviour
     {
         // Активируем панель QTE
         if (qtePanel != null)
+        {
             qtePanel.SetActive(true);
+        }
         
         // Устанавливаем текст инструкции
         if (qteInstructionText != null)
         {
-            string instruction = "ВРАГ АТАКУЕТ! ";
+            string instruction = "";
             
             if (capabilities.canBlock)
             {
-                instruction += "Нажмите клавиши в последовательности:";
-            }
-            else
-            {
-                instruction += "Нет доступных действий!";
+                instruction = "Враг атакует вашего юнита! Для блокирования атаки нажмите последовательность:";
             }
             
             qteInstructionText.text = instruction;

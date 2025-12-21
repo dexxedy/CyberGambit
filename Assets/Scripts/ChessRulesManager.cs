@@ -58,7 +58,6 @@ public class ChessRulesManager : MonoBehaviour
             allUnits.Add(unit);
         }
 
-        Debug.Log($"Игра началась! Найдено и инициализировано юнитов на доске: {allUnits.Count}");
     }
 
     /**

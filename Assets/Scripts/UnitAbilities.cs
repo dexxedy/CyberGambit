@@ -68,7 +68,6 @@ public class UnitAbilities : MonoBehaviour
                 break;
             case ChessUnitType.Pawn:
                 // Пешка не имеет способностей
-                Debug.Log("Пешка не имеет активных способностей");
                 break;
         }
     }
@@ -82,7 +81,6 @@ public class UnitAbilities : MonoBehaviour
     {
         if (cooldownHorseJump > 0)
         {
-            Debug.Log($"Способность коня на перезарядке! Осталось ходов: {cooldownHorseJump}");
             return;
         }
         
@@ -90,7 +88,6 @@ public class UnitAbilities : MonoBehaviour
         Camera actionCamera = CameraManager.Instance != null ? CameraManager.Instance.GetActionCamera() : null;
         if (actionCamera == null)
         {
-            Debug.LogWarning("Не удалось получить action camera для способности коня!");
             return;
         }
         
@@ -107,7 +104,6 @@ public class UnitAbilities : MonoBehaviour
         
         if (possibleMoves.Count == 0)
         {
-            Debug.Log("Нет доступных клеток для скачка коня!");
             return;
         }
         
@@ -146,8 +142,6 @@ public class UnitAbilities : MonoBehaviour
         {
             visualEffects.PlayHorseJumpEffect();
         }
-        
-        Debug.Log($"Конь прыгнул на {ChessGrid.Instance.GridToChessNotation(bestTarget.x, bestTarget.y)}");
     }
     
     // ========== СЛОН: Отражение урона (КД: 3 хода) ==========
@@ -159,7 +153,6 @@ public class UnitAbilities : MonoBehaviour
     {
         if (cooldownBishopReflection > 0)
         {
-            Debug.Log($"Способность слона на перезарядке! Осталось ходов: {cooldownBishopReflection}");
             return;
         }
         
@@ -174,8 +167,6 @@ public class UnitAbilities : MonoBehaviour
         {
             visualEffects.PlayBishopReflectionEffect(true);
         }
-        
-        Debug.Log("Слон активировал отражение урона! Действует весь следующий ход врага.");
     }
     
     // ========== ЛАДЬЯ: Уменьшение урона (КД: 3 хода) ==========
@@ -187,7 +178,6 @@ public class UnitAbilities : MonoBehaviour
     {
         if (cooldownGuardianShield > 0)
         {
-            Debug.Log($"Способность ладьи на перезарядке! Осталось ходов: {cooldownGuardianShield}");
             return;
         }
         
@@ -202,8 +192,6 @@ public class UnitAbilities : MonoBehaviour
         {
             visualEffects.PlayGuardianShieldEffect(true);
         }
-        
-        Debug.Log("Ладья активировала щит! Урон уменьшен на 50% в следующем ходу врага.");
     }
     
     // ========== ФЕРЗЬ: Увеличение урона (КД: 5 ходов) ==========
@@ -215,7 +203,6 @@ public class UnitAbilities : MonoBehaviour
     {
         if (cooldownQueenDamageBoost > 0)
         {
-            Debug.Log($"Способность ферзя на перезарядке! Осталось ходов: {cooldownQueenDamageBoost}");
             return;
         }
         
@@ -229,8 +216,6 @@ public class UnitAbilities : MonoBehaviour
         {
             visualEffects.PlayQueenBoostEffect(true);
         }
-        
-        Debug.Log("Ферзь активировала увеличение урона! +20% урона в этом ходу.");
     }
     
     // ========== КОРОЛЬ: Хил союзника (КД: 4 хода) ==========

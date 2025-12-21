@@ -131,7 +131,7 @@ public class CameraManager : MonoBehaviour
                         }
                         else
                         {
-                            Debug.Log("Нельзя выбрать: не твой юнит или не твой ход!");
+                            // Нельзя выбрать: не твой юнит или не твой ход
                         }
                     }
                 }
@@ -268,7 +268,6 @@ public class CameraManager : MonoBehaviour
                 // Переключаем Audio Listener на тактическую камеру
                 SwitchAudioListener(tacticalCamera, null);
             }
-            Debug.LogWarning("Action Camera была уничтожена. Переключение в Тактический режим.");
         }
 
         Cursor.lockState = CursorLockMode.None;

@@ -58,6 +58,14 @@ public class WeaponCollider : MonoBehaviour
         // 4. ПРОВЕРКА ЦЕЛИ: Убеждаемся, что цель принадлежит противнику.
         if (target != null && target != ownerUnit && target.owner != ownerUnit.owner)
         {
+            // 5. ПРОВЕРКА QTE: Если атака была заблокирована через QTE, не наносим урон
+            if (QTESystem.Instance != null && QTESystem.Instance.WasAttackBlocked(ownerUnit, target))
+            {
+                // Атака была заблокирована - не наносим урон
+                targetsHitInContact.Add(other); // Помечаем как пораженную, чтобы не обрабатывать повторно
+                return;
+            }
+            
             // Вычисляем финальный урон с учетом множителя способности (Ферзь)
             int finalDamage = Mathf.RoundToInt(ownerUnit.Damage * ownerUnit.GetDamageMultiplier());
             
