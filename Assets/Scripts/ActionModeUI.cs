@@ -34,8 +34,8 @@ public class ActionModeUI : MonoBehaviour
     [SerializeField] private TextMeshProUGUI timerText; // Текст таймера
     [SerializeField] private GameObject healthPanel; // Панель с HP
     [SerializeField] private TextMeshProUGUI healthText; // Текст HP
-    [SerializeField] private GameObject integrityPanel; // Панель с очками перемещения
-    [SerializeField] private TextMeshProUGUI integrityText; // Текст очков перемещения
+    [SerializeField] private GameObject integrityPanel; // Панель со счетчиком оставшейся дистанции
+    [SerializeField] private TextMeshProUGUI integrityText; // Текст метров
     
     [Header("HUD Container")]
     [SerializeField] private GameObject actionHUDContainer; // Родительский GameObject для всего HUD экшен-режима
@@ -350,10 +350,10 @@ public class ActionModeUI : MonoBehaviour
             healthText.text = $"HP: {controlledUnit.GetHealth()}";
         }
         
-        // Обновляем очки перемещения
+        // Обновляем оставшийся метраж
         if (integrityText != null && controlledUnit != null)
         {
-            integrityText.text = $"Очки перемещения: {controlledUnit.GetRuleIntegrityPoints():F0}";
+            integrityText.text = $"Дистанция: {controlledUnit.GetRemainingMoveMeters():F1} м";
         }
     }
     

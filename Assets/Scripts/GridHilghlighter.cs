@@ -29,56 +29,49 @@ public class GridHighlighter : MonoBehaviour
     // 2. Отображение разрешенных ходов
     public void ShowAllowedMoves(Unit unit)
     {
-        if (ChessGrid.Instance == null || ChessRulesManager.Instance == null || highlightPrefab == null) return;
+        if (ChessGrid.Instance == null || highlightPrefab == null || unit == null) return;
         
         ClearHighlights();
         
         // Получаем текущую позицию юнита в координатах сетки
         Vector2Int currentPos = ChessGrid.Instance.WorldToGridCoords(unit.transform.position);
-        ChessUnitType type = unit.chessType;
-        bool isFirstMove = unit.isFirstMove;
-        
-        // Для коня используем специальный метод, который показывает все возможные ходы (все 8 позиций буквой Г)
-        if (type == ChessUnitType.Horse)
-        {
-            List<Vector2Int> horseMoves = ChessRulesManager.Instance.GetHorsePossibleMoves(currentPos);
-            
-            foreach (Vector2Int targetPos in horseMoves)
-            {
-                // Создаем подсветку для каждой возможной позиции коня
-                Vector3 worldPos = ChessGrid.Instance.GridToWorldPosition(targetPos.x, targetPos.y);
-                worldPos.y += 0.01f; // Немного поднимаем подсветку над сеткой
-                
-                GameObject highlight = Instantiate(highlightPrefab, worldPos, Quaternion.identity, this.transform);
-                activeHighlights.Add(highlight);
-            }
-        }
-        else
-        {
-            // Для остальных фигур используем стандартный метод перебора всех клеток
-            for (int x = 0; x < ChessGrid.Instance.width; x++)
-            {
-                for (int y = 0; y < ChessGrid.Instance.height; y++)
-                {
-                    Vector2Int targetPos = new Vector2Int(x, y);
+        float remainingMeters = Mathf.Max(0f, unit.GetRemainingMoveMeters());
+        float cellMoveCost = ChessGrid.Instance.cellSize;
+        if (remainingMeters < Mathf.Max(0.1f, cellMoveCost * 0.5f)) return;
 
-                    // Нет смысла подсвечивать клетку, на которой мы стоим
-                    if (currentPos == targetPos) continue; 
+        // Подсветка показывает только "следующий шаг" (ортогонально).
+        // Первый шаг "только вперед" — только пока фигура ни разу не ходила за всю игру.
+        Vector2Int forward = GameManager.Instance != null
+            ? GameManager.Instance.GetForwardDirection(unit.owner)
+            : (unit.owner == Player.Player1 ? new Vector2Int(0, 1) : new Vector2Int(0, -1));
 
-                    // Проверяем, легален ли ход на эту клетку
-                    if (ChessRulesManager.Instance.IsMoveValid(type, currentPos, targetPos, isFirstMove))
-                    {
-                        // Ход легален, создаем объект подсветки
-                        Vector3 worldPos = ChessGrid.Instance.GridToWorldPosition(x, y);
-                        
-                        // Немного поднимаем подсветку над сеткой (например, на 0.01)
-                        worldPos.y += 0.01f; 
-                        
-                        GameObject highlight = Instantiate(highlightPrefab, worldPos, Quaternion.identity, this.transform);
-                        activeHighlights.Add(highlight);
-                    }
-                }
-            }
+        Vector2Int[] dirs = (unit.HasMovedAtLeastOnce() || unit.HasMovedThisTurn())
+            ? new[] { new Vector2Int(1, 0), new Vector2Int(-1, 0), new Vector2Int(0, 1), new Vector2Int(0, -1) }
+            : new[] { forward };
+
+        foreach (var d in dirs)
+        {
+            Vector2Int next = currentPos + d;
+            if (!ChessGrid.Instance.IsValidCoord(next.x, next.y)) continue;
+            if (IsCellOccupied(next, unit)) continue;
+
+            Vector3 worldPos = ChessGrid.Instance.GridToWorldPosition(next.x, next.y);
+            worldPos.y += 0.01f;
+            GameObject highlight = Instantiate(highlightPrefab, worldPos, Quaternion.identity, this.transform);
+            activeHighlights.Add(highlight);
         }
+    }
+    
+    private bool IsCellOccupied(Vector2Int gridPos, Unit excludeUnit)
+    {
+        Unit[] allUnits = FindObjectsByType<Unit>(FindObjectsSortMode.None);
+        foreach (var u in allUnits)
+        {
+            if (u == null || u == excludeUnit) continue;
+            if (u.GetHealth() <= 0) continue;
+            Vector2Int pos = ChessGrid.Instance.WorldToGridCoords(u.transform.position);
+            if (pos == gridPos) return true;
+        }
+        return false;
     }
 }

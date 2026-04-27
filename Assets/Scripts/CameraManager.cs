@@ -5,6 +5,12 @@ using System.Collections;
 
 public class CameraManager : MonoBehaviour
 {
+    public enum TacticalInputMode
+    {
+        MapOnly,
+        MapPlusFly
+    }
+
     public static CameraManager Instance;
     [SerializeField] private Camera tacticalCamera; // Камера вида сверху
     [SerializeField] private Camera actionCamera; // Камера от первого лица
@@ -26,10 +32,12 @@ public class CameraManager : MonoBehaviour
     [SerializeField] private float maxCameraHeight = 15f;
     [SerializeField] private TextMeshProUGUI turnText;
     [SerializeField] private GameObject turnPanel; // Панель с текстом хода
+    [Header("Tactical Input Mode")]
+    [SerializeField] private TacticalInputMode tacticalInputMode = TacticalInputMode.MapPlusFly;
     
     private Unit currentUnit; // Текущий выбранный юнит
     private bool isActionMode = false; // Флаг режима (false - тактический, true - экшен)
-    private float actionTime = 5f; // 5 секунд на ход
+    private float actionTime = 30f; // 30 секунд на ход
     private float remainingTime; // Остаток времени
     private bool isGameEnded = false;
     private bool isTimerPaused = false; // Флаг паузы таймера (для QTE)
@@ -113,30 +121,74 @@ public class CameraManager : MonoBehaviour
             else
             {
                 // Обычная логика для игрока
-                HandleTacticalCameraMovement();
-                if (Mouse.current.leftButton.wasPressedThisFrame)
+                if (tacticalInputMode == TacticalInputMode.MapPlusFly)
                 {
-                    Ray ray = tacticalCamera.ScreenPointToRay(Mouse.current.position.ReadValue());
-                    if (Physics.Raycast(ray, out RaycastHit hit, Mathf.Infinity, unitLayer))
+                    HandleTacticalCameraMovement();
+                    if (Mouse.current.leftButton.wasPressedThisFrame)
                     {
-                        Unit unit = hit.collider.GetComponent<Unit>();
-                        if (unit != null && unit.owner == GameManager.Instance.currentPlayer)
+                        Ray ray = tacticalCamera.ScreenPointToRay(Mouse.current.position.ReadValue());
+                        if (Physics.Raycast(ray, out RaycastHit hit, Mathf.Infinity, unitLayer))
                         {
-                            // Воспроизводим звук выбора юнита
-                            if (AudioManager.Instance != null)
+                            Unit unit = hit.collider.GetComponent<Unit>();
+                            if (unit != null && unit.owner == GameManager.Instance.currentPlayer)
                             {
-                                AudioManager.Instance.PlayUnitSelect();
+                                // Нужно иметь бросок костей на текущий ход
+                                if (GameManager.Instance != null && !GameManager.Instance.HasRolledDiceThisTurn())
+                                {
+                                    return;
+                                }
+
+                                // На первом ходе игрока нельзя выбирать фигуру, которая "сзади" (впереди стоит союзник)
+                                if (GameManager.Instance != null &&
+                                    GameManager.Instance.IsFirstTurnForPlayer(GameManager.Instance.currentPlayer) &&
+                                    IsFirstStepForwardImpossible(unit))
+                                {
+                                    return;
+                                }
+                                
+                                // Воспроизводим звук выбора юнита
+                                if (AudioManager.Instance != null)
+                                {
+                                    AudioManager.Instance.PlayUnitSelect();
+                                }
+                                SwitchToActionMode(unit);
                             }
-                            SwitchToActionMode(unit);
-                        }
-                        else
-                        {
-                            // Нельзя выбрать: не твой юнит или не твой ход
+                            else
+                            {
+                                // Нельзя выбрать: не твой юнит или не твой ход
+                            }
                         }
                     }
                 }
             }
         }
+    }
+
+    private bool IsFirstStepForwardImpossible(Unit unit)
+    {
+        if (unit == null || ChessGrid.Instance == null) return false;
+
+        Vector2Int pos = ChessGrid.Instance.WorldToGridCoords(unit.transform.position);
+        Vector2Int forward = GameManager.Instance != null
+            ? GameManager.Instance.GetForwardDirection(unit.owner)
+            : (unit.owner == Player.Player1 ? new Vector2Int(0, 1) : new Vector2Int(0, -1));
+        Vector2Int frontPos = pos + forward;
+
+        // Если впереди край доски — шага вперед нет
+        if (!ChessGrid.Instance.IsValidCoord(frontPos.x, frontPos.y)) return true;
+
+        Unit[] allUnits = FindObjectsByType<Unit>(FindObjectsSortMode.None);
+        foreach (var u in allUnits)
+        {
+            if (u == null || u == unit) continue;
+            if (u.GetHealth() <= 0) continue;
+
+            Vector2Int uPos = ChessGrid.Instance.WorldToGridCoords(u.transform.position);
+            // Если любая фигура стоит впереди — шаг вперед невозможен
+            if (uPos == frontPos) return true;
+        }
+
+        return false;
     }
 
     private void SwitchToActionMode(Unit unit)
@@ -148,6 +200,12 @@ public class CameraManager : MonoBehaviour
 
         currentUnit = unit;
         currentUnit.SetControlled(true);
+        
+        // Инициализируем бюджет перемещения в метрах из броска костей
+        if (GameManager.Instance != null)
+        {
+            currentUnit.SetRemainingMoveMeters(GameManager.Instance.GetCurrentTurnMoveBudgetMeters());
+        }
 
         // НОВОЕ: Показать разрешенные ходы при входе в экшен-режим
         if (GridHighlighter.Instance != null)
@@ -185,6 +243,10 @@ public class CameraManager : MonoBehaviour
         }
         
         if (turnPanel != null) turnPanel.SetActive(false);
+        if (TacticalMapUIController.Instance != null)
+        {
+            TacticalMapUIController.Instance.HideMap();
+        }
         StartCoroutine(ActionTimer());
     }
 
@@ -274,6 +336,10 @@ public class CameraManager : MonoBehaviour
         Cursor.visible = true;
 
         isActionMode = false;
+        if (TacticalMapUIController.Instance != null)
+        {
+            TacticalMapUIController.Instance.ShowMap();
+        }
 
         // Скрываем панели статистики через ActionModeUI
         if (ActionModeUI.Instance != null)
@@ -286,6 +352,27 @@ public class CameraManager : MonoBehaviour
         SetTacticalCameraPosition(GameManager.Instance.currentPlayer);
         if (turnPanel != null) turnPanel.SetActive(true);
         if (turnText != null) turnText.text = $"Ход: {GameManager.Instance.currentPlayer}";
+        if (TacticalMapUIController.Instance != null)
+        {
+            TacticalMapUIController.Instance.RefreshAllIconsFromUnits();
+        }
+    }
+
+    public void TrySwitchToActionModeFromMap(Unit unit)
+    {
+        if (unit == null || GameManager.Instance == null) return;
+        if (isActionMode) return;
+        if (unit.owner != GameManager.Instance.currentPlayer) return;
+        if (!GameManager.Instance.HasRolledDiceThisTurn()) return;
+        if (GameManager.Instance.IsBotTurn()) return;
+
+        if (GameManager.Instance.IsFirstTurnForPlayer(GameManager.Instance.currentPlayer) &&
+            IsFirstStepForwardImpossible(unit))
+        {
+            return;
+        }
+
+        SwitchToActionMode(unit);
     }
 
     private void SetTacticalCameraPosition(Player player)

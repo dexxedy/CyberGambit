@@ -29,9 +29,24 @@ public class GameManager : MonoBehaviour
     [Header("Volume Settings")]
     [SerializeField] private Slider musicVolumeSlider; // Слайдер громкости музыки
     [SerializeField] private Slider sfxVolumeSlider; // Слайдер громкости звуковых эффектов
+    
+    [Header("Dice Movement")]
+    [SerializeField] private int diceMin = 1;
+    [SerializeField] private int diceMax = 6;
+    [SerializeField] private float metersPerDicePoint = 25f;
+    private int currentTurnDice = 0;
+    private bool hasRolledDiceThisTurn = false;
 
     private bool isGameOver = false; // Флаг, чтобы остановить игру
     private bool isPaused = false;
+
+    // Нужно для правил "первого хода" (например, запрет выбора задних фигур)
+    private bool player1CompletedAtLeastOneTurn = false;
+    private bool player2CompletedAtLeastOneTurn = false;
+
+    // Направления "вперед" для каждого игрока (определяются по стартовой расстановке)
+    private Vector2Int player1Forward = new Vector2Int(0, 1);
+    private Vector2Int player2Forward = new Vector2Int(0, -1);
 
     void Awake()
     {
@@ -53,6 +68,88 @@ public class GameManager : MonoBehaviour
         {
             gameMode = testGameMode;
         }
+        
+        RollDiceForCurrentTurn();
+
+        // Определяем "вперед" после того, как юниты привязались к сетке
+        StartCoroutine(DetectForwardDirectionsAfterInit());
+    }
+
+    private System.Collections.IEnumerator DetectForwardDirectionsAfterInit()
+    {
+        // Ждем кадр, чтобы ChessRulesManager успел выполнить SnapToGrid в Start()
+        yield return null;
+
+        Unit[] allUnits = FindObjectsByType<Unit>(FindObjectsSortMode.None);
+        if (allUnits == null || allUnits.Length == 0 || ChessGrid.Instance == null) yield break;
+
+        Vector2 sum1 = Vector2.zero;
+        Vector2 sum2 = Vector2.zero;
+        int c1 = 0, c2 = 0;
+
+        foreach (var u in allUnits)
+        {
+            if (u == null) continue;
+            if (u.GetHealth() <= 0) continue;
+            Vector2Int gp = ChessGrid.Instance.WorldToGridCoords(u.transform.position);
+            if (u.owner == Player.Player1)
+            {
+                sum1 += new Vector2(gp.x, gp.y);
+                c1++;
+            }
+            else
+            {
+                sum2 += new Vector2(gp.x, gp.y);
+                c2++;
+            }
+        }
+
+        if (c1 == 0 || c2 == 0) yield break;
+
+        Vector2 avg1 = sum1 / c1;
+        Vector2 avg2 = sum2 / c2;
+        Vector2 delta = avg2 - avg1; // куда "смотрит" Player1, чтобы дойти до Player2
+
+        // Выбираем доминирующую ось (по которой игроки "разнесены" сильнее всего)
+        if (Mathf.Abs(delta.x) > Mathf.Abs(delta.y))
+        {
+            int sx = delta.x >= 0 ? 1 : -1;
+            player1Forward = new Vector2Int(sx, 0);
+            player2Forward = new Vector2Int(-sx, 0);
+        }
+        else
+        {
+            int sy = delta.y >= 0 ? 1 : -1;
+            player1Forward = new Vector2Int(0, sy);
+            player2Forward = new Vector2Int(0, -sy);
+        }
+    }
+    
+    public bool HasRolledDiceThisTurn() => hasRolledDiceThisTurn;
+    public int GetCurrentTurnDice() => currentTurnDice;
+    public float GetMetersPerDicePoint() => metersPerDicePoint;
+    public float ConvertDiceToMeters(int diceValue) => Mathf.Max(0, diceValue) * Mathf.Max(0f, metersPerDicePoint);
+    public float GetCurrentTurnMoveBudgetMeters() => ConvertDiceToMeters(currentTurnDice);
+    
+    public int RollDiceForCurrentTurn()
+    {
+        if (isGameOver) return currentTurnDice;
+        
+        int min = Mathf.Min(diceMin, diceMax);
+        int max = Mathf.Max(diceMin, diceMax);
+        min = Mathf.Max(0, min);
+        max = Mathf.Max(min, max);
+        
+        // Random.Range int max is exclusive
+        currentTurnDice = Random.Range(min, max + 1);
+        hasRolledDiceThisTurn = true;
+        return currentTurnDice;
+    }
+    
+    public void ResetDiceForNextTurn()
+    {
+        currentTurnDice = 0;
+        hasRolledDiceThisTurn = false;
     }
     public void EndGame(Player loser)
     {
@@ -228,7 +325,14 @@ public class GameManager : MonoBehaviour
     public void SwitchTurn()
     {
         if (isGameOver) return;
+
+        // Помечаем, что текущий игрок уже завершал хотя бы один ход
+        if (currentPlayer == Player.Player1) player1CompletedAtLeastOneTurn = true;
+        else player2CompletedAtLeastOneTurn = true;
+
         currentPlayer = (currentPlayer == Player.Player1) ? Player.Player2 : Player.Player1;
+        ResetDiceForNextTurn();
+        RollDiceForCurrentTurn();
         
         // Обновляем эффекты способностей всех юнитов при смене хода
         Unit[] allUnits = FindObjectsByType<Unit>(FindObjectsSortMode.None);
@@ -276,6 +380,16 @@ public class GameManager : MonoBehaviour
     public bool IsBotTurn()
     {
         return gameMode == GameMode.PlayerVsBot && currentPlayer == Player.Player2;
+    }
+
+    public bool IsFirstTurnForPlayer(Player player)
+    {
+        return player == Player.Player1 ? !player1CompletedAtLeastOneTurn : !player2CompletedAtLeastOneTurn;
+    }
+
+    public Vector2Int GetForwardDirection(Player player)
+    {
+        return player == Player.Player1 ? player1Forward : player2Forward;
     }
     public bool IsPaused() => isPaused;
     

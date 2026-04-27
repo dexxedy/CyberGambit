@@ -2,6 +2,7 @@ using UnityEngine;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using UnityEngine.AI;
 
 /// <summary>
 /// Управляет поведением бота.
@@ -220,6 +221,29 @@ public class BotController : MonoBehaviour
         // 1. АНАЛИЗ ДОСКИ И ОПРЕДЕЛЕНИЕ РЕЖИМА
         BotGameMode gameMode = DetermineGameMode();
         
+        // БРОСОК КОСТЕЙ НА ХОД БОТА
+        float moveBudgetMeters = 0f;
+        if (GameManager.Instance != null)
+        {
+            if (!GameManager.Instance.HasRolledDiceThisTurn())
+            {
+                GameManager.Instance.RollDiceForCurrentTurn();
+            }
+            moveBudgetMeters = GameManager.Instance.GetCurrentTurnMoveBudgetMeters();
+        }
+
+        // Mission1: если на этом же GameObject есть провайдер цели, приоритетно двигаемся к флагам.
+        Mission1BotObjectiveProvider mission1ObjectiveProvider = GetComponent<Mission1BotObjectiveProvider>();
+        if (mission1ObjectiveProvider != null)
+        {
+            Mission1FlagZone targetFlag = mission1ObjectiveProvider.SelectTargetFlag();
+            if (targetFlag != null)
+            {
+                yield return StartCoroutine(ExecuteMission1BotTurn(mission1ObjectiveProvider, targetFlag, moveBudgetMeters));
+                yield break;
+            }
+        }
+
         // 2. ВЫБОР ЮНИТА
         Unit selectedUnit = SelectBestUnit(gameMode);
         if (selectedUnit == null)
@@ -232,6 +256,8 @@ public class BotController : MonoBehaviour
             EndTurn();
             yield break;
         }
+        
+        selectedUnit.SetRemainingMoveMeters(moveBudgetMeters);
         
         // Переключаем камеру игрока на приближенный вид над юнитом бота
         if (CameraManager.Instance != null)
@@ -278,7 +304,7 @@ public class BotController : MonoBehaviour
         else
         {
             // 5. ПЕРЕМЕЩЕНИЕ К ЦЕЛИ (двигаемся вперёд к врагам)
-            yield return StartCoroutine(MoveTowardsEnemy(selectedUnit, targetEnemy));
+            yield return StartCoroutine(MoveTowardsEnemy(selectedUnit, targetEnemy, moveBudgetMeters));
             
             // 6. Способность после перемещения
             TryUseAbility(selectedUnit);
@@ -338,7 +364,6 @@ public class BotController : MonoBehaviour
         Unit[] allUnits = FindObjectsByType<Unit>(FindObjectsSortMode.None);
         List<Unit> botUnits = allUnits
             .Where(u => u != null && u.owner == Player.Player2 && u.GetHealth() > 0)
-            .Where(u => u.GetRuleIntegrityPoints() > 15f)
             .ToList();
         
         if (botUnits.Count == 0) return null;
@@ -497,7 +522,7 @@ public class BotController : MonoBehaviour
         float healthBonus = healthRatio * 30f;
         
         // Бонус за очки перемещения
-        float integrityBonus = (unit.GetRuleIntegrityPoints() / 100f) * 20f;
+        float integrityBonus = 0f;
         
         // Штраф за недавнее использование (ротация)
         float recentUsePenalty = 0f;
@@ -663,57 +688,245 @@ public class BotController : MonoBehaviour
     /// <summary>
     /// Перемещение к врагу с разворотом и проверкой автоатак
     /// </summary>
-    private IEnumerator MoveTowardsEnemy(Unit unit, Unit target)
+    private IEnumerator MoveTowardsEnemy(Unit unit, Unit target, float moveBudgetMeters)
     {
         if (unit == null || ChessGrid.Instance == null) yield break;
         
-        Vector2Int currentPos = ChessGrid.Instance.WorldToGridCoords(unit.transform.position);
-        Vector2Int? moveTarget = null;
-        
-        if (target != null)
+        moveBudgetMeters = Mathf.Max(0f, moveBudgetMeters);
+        if (moveBudgetMeters <= 0f) yield break;
+
+        Unit effectiveTarget = target ?? FindNearestEnemy(unit);
+        if (effectiveTarget == null) yield break;
+
+        yield return StartCoroutine(MoveTowardsWorldTargetByBudget(unit, effectiveTarget.transform.position, moveBudgetMeters));
+    }
+    
+    private IEnumerator ExecuteMission1BotTurn(Mission1BotObjectiveProvider objectiveProvider, Mission1FlagZone targetFlag, float moveBudgetMeters)
+    {
+        if (objectiveProvider == null || targetFlag == null || ChessGrid.Instance == null)
         {
-            // Ищем лучший ход к врагу
-            moveTarget = FindBestMoveTowards(unit, target);
+            EndTurn();
+            yield break;
         }
-        
-        // Если нет хода к цели - любой ход вперёд
-        if (!moveTarget.HasValue)
+
+        Unit[] allUnits = FindObjectsByType<Unit>(FindObjectsSortMode.None);
+        List<Unit> botUnits = allUnits
+            .Where(u => u != null && u.owner == Player.Player2 && u.GetHealth() > 0)
+            .ToList();
+
+        if (botUnits.Count == 0)
         {
-            moveTarget = FindAnyForwardMove(unit, currentPos);
+            EndTurn();
+            yield break;
         }
-        
-        // Если всё ещё нет - любой ход
-        if (!moveTarget.HasValue)
+
+        // Выбираем ближайший юнит бота к целевому флагу.
+        Unit selectedUnit = botUnits
+            .OrderBy(u => Vector3.Distance(u.transform.position, targetFlag.transform.position))
+            .FirstOrDefault();
+
+        if (selectedUnit == null)
         {
-            moveTarget = FindAnyMove(unit, currentPos);
+            EndTurn();
+            yield break;
         }
-        
-        // Выполняем ход
-        if (moveTarget.HasValue && moveTarget.Value != currentPos)
+
+        selectedUnit.SetRemainingMoveMeters(moveBudgetMeters);
+
+        // Переключаем камеру игрока на приближенный вид над юнитом бота
+        if (CameraManager.Instance != null)
         {
-            Vector3 targetWorldPos = ChessGrid.Instance.GridToWorldPosition(moveTarget.Value.x, moveTarget.Value.y);
-            
-            // РАЗВОРОТ К ЦЕЛИ перед движением
-            if (target != null)
+            CameraManager.Instance.SwitchToBotUnitView(selectedUnit);
+            yield return new WaitForSeconds(0.6f);
+        }
+
+        yield return StartCoroutine(MoveTowardsFlag(selectedUnit, targetFlag, moveBudgetMeters));
+
+        // Опционально: если после перемещения враг оказался в радиусе атаки — делаем атаку.
+        Unit enemyInRange = FindEnemyInAttackRange(selectedUnit);
+        if (enemyInRange != null)
+        {
+            RotateTowardsTarget(selectedUnit, enemyInRange.transform.position);
+            yield return new WaitForSeconds(0.2f);
+
+            TryUseAbility(selectedUnit);
+            yield return new WaitForSeconds(0.2f);
+
+            yield return StartCoroutine(PerformAttack(selectedUnit, enemyInRange));
+        }
+
+        yield return new WaitForSeconds(0.3f);
+        EndTurn();
+    }
+
+    private IEnumerator MoveTowardsFlag(Unit unit, Mission1FlagZone targetFlag, float moveBudgetMeters)
+    {
+        if (unit == null || targetFlag == null || ChessGrid.Instance == null) yield break;
+        
+        moveBudgetMeters = Mathf.Max(0f, moveBudgetMeters);
+        if (moveBudgetMeters <= 0f) yield break;
+
+        yield return StartCoroutine(MoveTowardsWorldTargetByBudget(unit, targetFlag.transform.position, moveBudgetMeters));
+    }
+
+    private IEnumerator MoveTowardsWorldTargetByBudget(Unit unit, Vector3 targetWorldPos, float moveBudgetMeters)
+    {
+        if (unit == null) yield break;
+
+        Vector3 startPosition = unit.transform.position;
+        if (!TryGetReachablePointByBudget(startPosition, targetWorldPos, moveBudgetMeters, out Vector3 reachablePoint, out float travelledMeters))
+        {
+            yield break;
+        }
+
+        if (travelledMeters <= 0.01f) yield break;
+        RotateTowardsTarget(unit, reachablePoint);
+        yield return new WaitForSeconds(moveDelay);
+        yield return StartCoroutine(MoveUnitToWorldPoint(unit, reachablePoint, travelledMeters));
+    }
+
+    private bool TryGetReachablePointByBudget(Vector3 from, Vector3 target, float budgetMeters, out Vector3 reachablePoint, out float travelledMeters)
+    {
+        reachablePoint = from;
+        travelledMeters = 0f;
+        if (budgetMeters <= 0f) return false;
+
+        NavMeshPath path = new NavMeshPath();
+        if (!NavMesh.CalculatePath(from, target, NavMesh.AllAreas, path) ||
+            path.corners == null || path.corners.Length < 2)
+        {
+            return false;
+        }
+
+        float totalLength = 0f;
+        for (int i = 1; i < path.corners.Length; i++)
+        {
+            totalLength += Vector3.Distance(path.corners[i - 1], path.corners[i]);
+        }
+
+        if (totalLength <= 0.01f) return false;
+        float allowed = Mathf.Min(totalLength, budgetMeters);
+        travelledMeters = allowed;
+        reachablePoint = GetPointAlongCorners(path.corners, allowed);
+        return true;
+    }
+
+    private Vector3 GetPointAlongCorners(Vector3[] corners, float distanceFromStart)
+    {
+        if (corners == null || corners.Length == 0) return Vector3.zero;
+        if (corners.Length == 1 || distanceFromStart <= 0f) return corners[0];
+
+        float remaining = distanceFromStart;
+        for (int i = 1; i < corners.Length; i++)
+        {
+            Vector3 a = corners[i - 1];
+            Vector3 b = corners[i];
+            float segmentLength = Vector3.Distance(a, b);
+            if (remaining <= segmentLength || i == corners.Length - 1)
             {
-                RotateTowardsTarget(unit, target.transform.position);
+                float t = segmentLength > 0f ? Mathf.Clamp01(remaining / segmentLength) : 1f;
+                return Vector3.Lerp(a, b, t);
+            }
+            remaining -= segmentLength;
+        }
+
+        return corners[corners.Length - 1];
+    }
+
+    private IEnumerator MoveUnitToWorldPoint(Unit unit, Vector3 worldPos, float travelledMeters)
+    {
+        CharacterController controller = unit.GetComponent<CharacterController>();
+        Vector3 startPos = unit.transform.position;
+        float duration = Mathf.Clamp(travelledMeters / Mathf.Max(0.1f, unit.MoveSpeed), 0.2f, 2.5f);
+        float elapsed = 0f;
+
+        while (elapsed < duration)
+        {
+            elapsed += Time.deltaTime;
+            float t = Mathf.Clamp01(elapsed / duration);
+            Vector3 nextPos = Vector3.Lerp(startPos, worldPos, t);
+            Vector3 move = nextPos - unit.transform.position;
+            move.y = 0f;
+
+            if (controller != null && controller.enabled)
+            {
+                controller.Move(move);
             }
             else
             {
-                RotateTowardsTarget(unit, targetWorldPos);
+                unit.transform.position = nextPos;
             }
-            
-            yield return new WaitForSeconds(moveDelay);
-            
-            // ДВИЖЕНИЕ
-            yield return StartCoroutine(MoveUnitToPosition(unit, moveTarget.Value, targetWorldPos));
-            
-            // Автоатака отключена - QTE теперь запускается только при атаке бота на юнит игрока
+
+            unit.RefreshGridPositionFromWorld();
+            yield return null;
+        }
+
+        if (controller != null && controller.enabled)
+        {
+            controller.enabled = false;
+            unit.transform.position = worldPos;
+            controller.enabled = true;
         }
         else
         {
-            // Бот не может переместиться
+            unit.transform.position = worldPos;
         }
+
+        unit.ConsumeMoveMeters(travelledMeters);
+        unit.RefreshGridPositionFromWorld();
+    }
+
+    private Vector2Int? FindNextStepTowardsFlag(Unit unit, Vector2Int currentPos, Vector2Int targetPos)
+    {
+        if (ChessGrid.Instance == null) return null;
+
+        // 4 направления
+        Vector2Int[] dirs = new[]
+        {
+            new Vector2Int(1, 0),
+            new Vector2Int(-1, 0),
+            new Vector2Int(0, 1),
+            new Vector2Int(0, -1),
+        };
+
+        // Выбираем соседнюю клетку, которая уменьшает Manhattan distance до цели.
+        float bestScore = float.NegativeInfinity;
+        Vector2Int? best = null;
+
+        foreach (var d in dirs)
+        {
+            Vector2Int next = currentPos + d;
+            if (!ChessGrid.Instance.IsValidCoord(next.x, next.y)) continue;
+            if (IsCellOccupied(next, unit)) continue;
+
+            int distNow = Mathf.Abs(currentPos.x - targetPos.x) + Mathf.Abs(currentPos.y - targetPos.y);
+            int distNext = Mathf.Abs(next.x - targetPos.x) + Mathf.Abs(next.y - targetPos.y);
+            int improvement = distNow - distNext;
+
+            // Бонус за движение "вперед" (для Player2 — к меньшему y)
+            float score = improvement * 10f;
+            if (next.y < currentPos.y) score += 2f;
+
+            if (score > bestScore)
+            {
+                bestScore = score;
+                best = next;
+            }
+        }
+
+        // Если ни один шаг не улучшает, делаем любой доступный шаг (чтобы бот не стоял).
+        if (!best.HasValue)
+        {
+            foreach (var d in dirs)
+            {
+                Vector2Int next = currentPos + d;
+                if (!ChessGrid.Instance.IsValidCoord(next.x, next.y)) continue;
+                if (IsCellOccupied(next, unit)) continue;
+                return next;
+            }
+        }
+
+        return best;
     }
     
     // Автоатака отключена - QTE теперь запускается только при атаке бота на юнит игрока
@@ -721,16 +934,72 @@ public class BotController : MonoBehaviour
     /// <summary>
     /// Плавное перемещение юнита с возможностью дополнительного приближения к врагу
     /// </summary>
-    private IEnumerator MoveUnitToPosition(Unit unit, Vector2Int gridPos, Vector3 worldPos)
+    private IEnumerator MoveUnitToGridCell(Unit unit, Vector2Int gridPos, Vector3 worldPos)
     {
         float distance = Vector3.Distance(unit.transform.position, worldPos);
         float duration = Mathf.Clamp(distance / unit.MoveSpeed, 0.3f, 1.5f);
         
         unit.MoveToGridPosition(gridPos);
         yield return new WaitForSeconds(duration + 0.1f);
+    }
+    
+    private Vector2Int? FindNextStepTowardsTarget(Unit unit, Vector2Int currentPos, Unit target)
+    {
+        if (ChessGrid.Instance == null) return null;
         
-        // После перемещения на клетку проверяем, нужно ли подойти ближе к врагу
-        yield return StartCoroutine(ApproachEnemyIfNeeded(unit));
+        // 4 направления
+        Vector2Int[] dirs = new[]
+        {
+            new Vector2Int(1, 0),
+            new Vector2Int(-1, 0),
+            new Vector2Int(0, 1),
+            new Vector2Int(0, -1),
+        };
+        
+        Vector2Int targetPos = currentPos;
+        if (target != null)
+        {
+            targetPos = ChessGrid.Instance.WorldToGridCoords(target.transform.position);
+        }
+        
+        // Выбираем соседнюю клетку, которая уменьшает Manhattan distance до цели
+        float bestScore = float.NegativeInfinity;
+        Vector2Int? best = null;
+        
+        foreach (var d in dirs)
+        {
+            Vector2Int next = currentPos + d;
+            if (!ChessGrid.Instance.IsValidCoord(next.x, next.y)) continue;
+            if (IsCellOccupied(next, unit)) continue;
+            
+            int distNow = Mathf.Abs(currentPos.x - targetPos.x) + Mathf.Abs(currentPos.y - targetPos.y);
+            int distNext = Mathf.Abs(next.x - targetPos.x) + Mathf.Abs(next.y - targetPos.y);
+            int improvement = distNow - distNext;
+            
+            // Бонус за движение "вперед" (для Player2 — к меньшему y)
+            float score = improvement * 10f;
+            if (next.y < currentPos.y) score += 2f;
+            
+            if (score > bestScore)
+            {
+                bestScore = score;
+                best = next;
+            }
+        }
+        
+        // Если ни один шаг не улучшает, делаем любой доступный шаг (чтобы бот не стоял)
+        if (!best.HasValue)
+        {
+            foreach (var d in dirs)
+            {
+                Vector2Int next = currentPos + d;
+                if (!ChessGrid.Instance.IsValidCoord(next.x, next.y)) continue;
+                if (IsCellOccupied(next, unit)) continue;
+                return next;
+            }
+        }
+        
+        return best;
     }
     
     /// <summary>
@@ -1061,33 +1330,27 @@ public class BotController : MonoBehaviour
     private List<Vector2Int> GetValidMoves(Unit unit, Vector2Int currentPos)
     {
         List<Vector2Int> moves = new List<Vector2Int>();
-        if (ChessGrid.Instance == null || ChessRulesManager.Instance == null) return moves;
+        if (ChessGrid.Instance == null) return moves;
         
-        // Конь - специальные ходы
-        if (unit.chessType == ChessUnitType.Horse)
+        // Базовое перемещение: 4-соседа
+        Vector2Int[] dirs = new[]
         {
-            return ChessRulesManager.Instance.GetHorsePossibleMoves(currentPos)
-                .Where(m => !IsCellOccupied(m, unit))
-                .ToList();
-        }
+            new Vector2Int(1, 0),
+            new Vector2Int(-1, 0),
+            new Vector2Int(0, 1),
+            new Vector2Int(0, -1),
+        };
         
-        // Валидные ходы
-        for (int x = 0; x < ChessGrid.Instance.width; x++)
+        foreach (var d in dirs)
         {
-            for (int y = 0; y < ChessGrid.Instance.height; y++)
-            {
-                Vector2Int pos = new Vector2Int(x, y);
-                if (pos == currentPos) continue;
-                
-                if (ChessRulesManager.Instance.IsMoveValid(unit.chessType, currentPos, pos, unit.isFirstMove))
-                {
-                    moves.Add(pos);
-                }
-            }
+            Vector2Int pos = currentPos + d;
+            if (!ChessGrid.Instance.IsValidCoord(pos.x, pos.y)) continue;
+            if (IsCellOccupied(pos, unit)) continue;
+            moves.Add(pos);
         }
         
         // Добавляем соседние если нет валидных
-        if (moves.Count == 0 && unit.GetRuleIntegrityPoints() > 20f)
+        if (moves.Count == 0)
         {
             for (int dx = -2; dx <= 2; dx++)
             {

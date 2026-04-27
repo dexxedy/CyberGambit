@@ -15,6 +15,10 @@ public enum ChessUnitType
 public class ChessRulesManager : MonoBehaviour
 {
     public static ChessRulesManager Instance;
+    
+    [Header("Setup")]
+    [Tooltip("Если выключено, менеджер НЕ будет вызывать SnapToGrid() для всех юнитов на старте. Для mission1 лучше выключить.")]
+    [SerializeField] private bool snapUnitsToGridOnStart = true;
 
     // Список для отслеживания всех активных юнитов на доске
     private List<Unit> allUnits = new List<Unit>();
@@ -51,8 +55,11 @@ public class ChessRulesManager : MonoBehaviour
 
         foreach (var unit in foundUnits)
         {
-            // 2. Юнит сам вычисляет ближайшую клетку и "примагничивается" к ней
-            unit.SnapToGrid();
+            if (snapUnitsToGridOnStart)
+            {
+                // Юнит сам вычисляет ближайшую клетку и "примагничивается" к ней
+                unit.SnapToGrid();
+            }
             
             // 3. Добавляем юнита в список менеджера для дальнейшего учета
             allUnits.Add(unit);

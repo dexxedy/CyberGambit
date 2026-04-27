@@ -24,6 +24,9 @@ public class TacticalModeUI : MonoBehaviour
     [Header("Turn Panel")]
     [SerializeField] private GameObject turnPanel; // Панель с информацией о текущем ходе
     [SerializeField] private TextMeshProUGUI turnText; // Текст "Ход Игрока 1" или "Ход Игрока 2"
+
+    [Header("Dice UI")]
+    [SerializeField] private TextMeshProUGUI diceText; // Текст броска костей в тактике
     
     [Header("Tutorial/Instructions Panel")]
     [SerializeField] private GameObject instructionsPanel; // Панель с инструкциями
@@ -290,6 +293,16 @@ public class TacticalModeUI : MonoBehaviour
                     {
                         turnText.text = "Ход Игрока 2";
                     }
+                }
+
+                // Показываем бросок костей в тактическом режиме
+                if (diceText != null)
+                {
+                    int dice = GameManager.Instance.HasRolledDiceThisTurn() ? GameManager.Instance.GetCurrentTurnDice() : 0;
+                    float meters = GameManager.Instance.HasRolledDiceThisTurn()
+                        ? GameManager.Instance.GetCurrentTurnMoveBudgetMeters()
+                        : 0f;
+                    diceText.text = dice > 0 ? $"Кости: {dice}  |  Ход: {meters:F0} м" : "Кости: -";
                 }
             }
         }

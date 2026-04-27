@@ -1,9 +1,13 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
+using UnityEngine.AI;
 using System.Collections;
+using System;
 
 public class Unit : MonoBehaviour
 {
+    public static event Action<Unit, Vector2Int, Vector2Int> OnGridPositionChanged;
+
     public Transform cameraAttachPoint;
     public Player owner;
 
@@ -29,10 +33,19 @@ public class Unit : MonoBehaviour
     [SerializeField] private float baseMoveSpeed = 5f; // Базовая скорость, для которой анимация настроена
     [SerializeField] private float minAnimationSpeed = 0.6f; // Минимальная скорость анимации
     [SerializeField] private float maxAnimationSpeed = 1.2f; // Максимальная скорость анимации
+    
+    [Header("Movement Steps (Dice)")]
+    [SerializeField] private int remainingSteps = 0;
+    [SerializeField] private float remainingMoveMeters = 0f;
+    [SerializeField] private bool constrainActionMovementToNavMesh = true;
+    [SerializeField] private float navMeshSampleRadius = 1.25f;
+    
+    [Header("Grid Sync (Tactical Layer)")]
+    [Tooltip("Если включено, юнит будет принудительно привязываться к ChessGrid в Start(). Отключи в mission1, если юниты улетают/падают.")]
+    [SerializeField] private bool snapToGridOnStart = true;
 
-    [Header("Rule Integrity")]
-    [SerializeField] public float ruleIntegrityPoints = 100f; // Начальный запас очков целостности
-    [SerializeField] private float integrityCostPerCell = 10f; // Фиксированная стоимость за переход на невалидную клетку
+    // Был ли юнит хоть раз сдвинут за всю игру (для логики "первый шаг только вперед")
+    private bool hasMovedAtLeastOnce = false;
     
     [Header("QTE & Combat")]
     private bool isBlocking = false; // Флаг блокирования (снижает входящий урон)
@@ -60,14 +73,15 @@ public class Unit : MonoBehaviour
 
     private Vector3 playerVelocity;
     private Vector2Int startGridPosition;
-    private Vector2Int lastLegalGridPosition;
-    private Vector2Int lastCheckedGridPosition; // Последняя проверенная клетка для отслеживания переходов
+    private Vector2Int lastCheckedGridPosition; // Последняя зафиксированная клетка (для списания шагов)
+    private Vector3 lastCheckedCellWorldPosition; // Центр последней зафиксированной клетки
     private float xRotation = 0f;
     private bool isGrounded;
     private Vector2 moveInput;
     private Vector2 lookInput;
     private bool fireInput;
     private bool isControlled = false;
+    private const float MinMoveBudgetEpsilon = 0.01f;
     
     
     private Animator animator;
@@ -80,7 +94,7 @@ public class Unit : MonoBehaviour
             return;
         }
         animator = GetComponent<Animator>();
-        if (ChessGrid.Instance != null)
+        if (snapToGridOnStart && ChessGrid.Instance != null)
         {
             SnapToGrid();
         }
@@ -178,10 +192,31 @@ public class Unit : MonoBehaviour
         {
             return;
         }
-        HandleMovementCost();
-        Vector3 move = transform.right * moveInput.x + transform.forward * moveInput.y;
-        move = move.normalized * moveSpeed;
-        controller.Move(move * Time.deltaTime);
+        // Обновляем позицию для тактической карты даже в экшен-режиме.
+        if (ChessGrid.Instance != null)
+        {
+            SetCurrentGridPosition(ChessGrid.Instance.WorldToGridCoords(transform.position));
+        }
+
+        Vector3 rawMove = transform.right * moveInput.x + transform.forward * moveInput.y;
+        Vector3 moveDirection = rawMove.sqrMagnitude > 0f ? rawMove.normalized : Vector3.zero;
+        float requestedDistance = moveSpeed * moveInput.magnitude * Time.deltaTime;
+        float allowedDistance = Mathf.Min(requestedDistance, remainingMoveMeters);
+        Vector3 moveVector = moveDirection * allowedDistance;
+        moveVector = ConstrainMoveVectorToNavMesh(moveVector);
+        if (moveVector.sqrMagnitude > 0f)
+        {
+            float actualDistance = moveVector.magnitude;
+            controller.Move(moveVector);
+            ConsumeMoveMeters(actualDistance);
+            if (ChessGrid.Instance != null)
+            {
+                SetCurrentGridPosition(ChessGrid.Instance.WorldToGridCoords(transform.position));
+            }
+        }
+
+        HandleMovementSteps();
+        if (!isControlled) return;
 
         float mouseY = lookInput.y * mouseSensitivity;
         xRotation -= mouseY;
@@ -320,7 +355,7 @@ public class Unit : MonoBehaviour
     public void SnapToGrid()
     {
         if (ChessGrid.Instance == null) return;
-        currentGridPosition = ChessGrid.Instance.WorldToGridCoords(transform.position);
+        SetCurrentGridPosition(ChessGrid.Instance.WorldToGridCoords(transform.position));
         Vector3 snapPosition = ChessGrid.Instance.GridToWorldPosition(currentGridPosition.x, currentGridPosition.y);
         
         if (controller != null)
@@ -334,51 +369,105 @@ public class Unit : MonoBehaviour
             transform.position = snapPosition;
         }
     }
-    private void HandleMovementCost()
+
+    public void SetRemainingSteps(int steps)
     {
-        if (ChessGrid.Instance == null || ChessRulesManager.Instance == null) return;
+        remainingSteps = Mathf.Max(0, steps);
+        float fallbackMetersPerStep = ChessGrid.Instance != null ? ChessGrid.Instance.cellSize : 1f;
+        float metersPerStep = GameManager.Instance != null ? GameManager.Instance.GetMetersPerDicePoint() : fallbackMetersPerStep;
+        remainingMoveMeters = remainingSteps * Mathf.Max(0f, metersPerStep);
         
-        // Обновляем текущую логическую позицию
-        currentGridPosition = ChessGrid.Instance.WorldToGridCoords(transform.position);
+        if (ChessGrid.Instance != null)
+        {
+            lastCheckedGridPosition = ChessGrid.Instance.WorldToGridCoords(transform.position);
+            lastCheckedCellWorldPosition = ChessGrid.Instance.GridToWorldPosition(lastCheckedGridPosition.x, lastCheckedGridPosition.y);
+        }
+    }
+    
+    public int GetRemainingSteps() => remainingSteps;
+    
+    public void SetRemainingMoveMeters(float meters)
+    {
+        remainingMoveMeters = Mathf.Max(0f, meters);
+        float fallbackMetersPerStep = ChessGrid.Instance != null ? ChessGrid.Instance.cellSize : 1f;
+        float metersPerStep = GameManager.Instance != null ? GameManager.Instance.GetMetersPerDicePoint() : fallbackMetersPerStep;
+        if (metersPerStep > 0f)
+        {
+            remainingSteps = Mathf.CeilToInt(remainingMoveMeters / metersPerStep);
+        }
+        else
+        {
+            remainingSteps = 0;
+        }
+    }
+    
+    public float GetRemainingMoveMeters() => remainingMoveMeters;
+    
+    public void ConsumeMoveMeters(float meters)
+    {
+        if (meters <= 0f) return;
+        remainingMoveMeters = Mathf.Max(0f, remainingMoveMeters - meters);
+
+        float fallbackMetersPerStep = ChessGrid.Instance != null ? ChessGrid.Instance.cellSize : 1f;
+        float metersPerStep = GameManager.Instance != null ? GameManager.Instance.GetMetersPerDicePoint() : fallbackMetersPerStep;
+        if (metersPerStep > 0f)
+        {
+            remainingSteps = Mathf.CeilToInt(remainingMoveMeters / metersPerStep);
+        }
+        else
+        {
+            remainingSteps = 0;
+        }
+    }
+
+    public bool HasMovedAtLeastOnce() => hasMovedAtLeastOnce;
+
+    public bool HasMovedThisTurn()
+    {
+        if (!isControlled) return false;
+        if (ChessGrid.Instance == null) return false;
+        Vector2Int pos = ChessGrid.Instance.WorldToGridCoords(transform.position);
+        return pos != startGridPosition;
+    }
+    
+    private void HandleMovementSteps()
+    {
+        if (ChessGrid.Instance == null) return;
         
-        // Проверяем, перешел ли юнит в другую клетку
+        SetCurrentGridPosition(ChessGrid.Instance.WorldToGridCoords(transform.position));
         if (currentGridPosition != lastCheckedGridPosition)
         {
-            // Юнит перешел в новую клетку - проверяем валидность перехода
-            bool isTransitionLegal = false;
-            
-            // Если юнит находится на стартовой клетке - переход легален (не покинул стартовую позицию)
-            if (currentGridPosition == startGridPosition)
-            {
-                isTransitionLegal = true;
-            }
-            else
-            {
-                // Юнит покинул стартовую клетку - проверяем валидность хода от startGridPosition к currentGridPosition
-                // Это проверяет, соответствует ли текущая позиция правилам движения фигуры
-                isTransitionLegal = ChessRulesManager.Instance.IsMoveValid(
-                    chessType,
-                    startGridPosition,
-                    currentGridPosition,
-                    isFirstMove
-                );
-            }
-            
-            // Если переход нелегален - снимаем фиксированное количество очков
-            if (!isTransitionLegal)
-            {
-                ruleIntegrityPoints -= integrityCostPerCell;
-                ruleIntegrityPoints = Mathf.Max(0f, ruleIntegrityPoints);
-            }
-            
-            // Обновляем последнюю проверенную позицию
+            hasMovedAtLeastOnce = true;
             lastCheckedGridPosition = currentGridPosition;
+            lastCheckedCellWorldPosition = ChessGrid.Instance.GridToWorldPosition(currentGridPosition.x, currentGridPosition.y);
+            if (GridHighlighter.Instance != null)
+            {
+                GridHighlighter.Instance.ShowAllowedMoves(this);
+            }
         }
         
-        // Проверка на смерть/штраф
-        if (ruleIntegrityPoints <= 0)
+        if (remainingMoveMeters <= MinMoveBudgetEpsilon &&
+            CameraManager.Instance != null &&
+            CameraManager.Instance.IsActionMode() &&
+            CameraManager.Instance.GetCurrentControlledUnit() == this)
         {
-            Die();
+            remainingMoveMeters = 0f;
+            remainingSteps = 0;
+            CameraManager.Instance.SwitchToTacticalMode();
+        }
+    }
+    
+    private void SnapToCellWorldPosition(Vector3 worldPos)
+    {
+        if (controller != null)
+        {
+            controller.enabled = false;
+            transform.position = worldPos;
+            controller.enabled = true;
+        }
+        else
+        {
+            transform.position = worldPos;
         }
     }
 
@@ -410,14 +499,17 @@ public class Unit : MonoBehaviour
             if (ChessGrid.Instance != null)
             {
                 startGridPosition = ChessGrid.Instance.WorldToGridCoords(transform.position);
-                lastLegalGridPosition = startGridPosition;
                 lastCheckedGridPosition = startGridPosition; // Инициализируем отслеживание переходов
+                lastCheckedCellWorldPosition = ChessGrid.Instance.GridToWorldPosition(startGridPosition.x, startGridPosition.y);
             }
-            // Если у юнита были потрачены очки целостности, и он начинает новый ход, 
-            // мы можем рассмотреть возможность их частичного восстановления здесь (если бы ты хотел).
         }
         else
         {
+            // Сбрасываем ввод, чтобы не "залипала" анимация бега после завершения хода
+            moveInput = Vector2.zero;
+            lookInput = Vector2.zero;
+            fireInput = false;
+
             // Конец хода: Просто убеждаемся, что анимация остановлена
             ResetAnimation();
             // isAttacking уже сброшен в ResetAnimation()
@@ -425,7 +517,7 @@ public class Unit : MonoBehaviour
             // Если юнит завершает ход, и он стоит не на стартовой клетке
             if (ChessGrid.Instance != null)
             {
-                currentGridPosition = ChessGrid.Instance.WorldToGridCoords(transform.position);
+                SetCurrentGridPosition(ChessGrid.Instance.WorldToGridCoords(transform.position));
                 // Если ход был легален (isMoveLegal == true в последнем Update), 
                 // можно пометить isFirstMove = false для пешек.
                 if (chessType == ChessUnitType.Pawn && startGridPosition != currentGridPosition)
@@ -434,6 +526,16 @@ public class Unit : MonoBehaviour
                     isFirstMove = false;
                 }
             }
+        }
+    }
+
+    private void SetCurrentGridPosition(Vector2Int newPosition)
+    {
+        Vector2Int oldPosition = currentGridPosition;
+        currentGridPosition = newPosition;
+        if (oldPosition != newPosition)
+        {
+            OnGridPositionChanged?.Invoke(this, oldPosition, newPosition);
         }
     }
 
@@ -453,7 +555,8 @@ public class Unit : MonoBehaviour
     
     public float GetRuleIntegrityPoints()
     {
-    return ruleIntegrityPoints;
+        // Backwards-compat: заменено на шаги. План: удалить вызовы с UI/бота.
+        return remainingMoveMeters;
     }
     public int Damage { get { return damage; } }
     
@@ -745,14 +848,56 @@ public class Unit : MonoBehaviour
         }
         
         // Обновляем позицию на сетке
-        currentGridPosition = targetGridPos;
+        SetCurrentGridPosition(targetGridPos);
         SnapToGrid();
+        ConsumeMoveMeters(distance);
         
         // Останавливаем анимацию движения
         if (animator != null)
         {
             animator.SetFloat("Speed", 0f);
         }
+    }
+    
+    public void RefreshGridPositionFromWorld()
+    {
+        if (ChessGrid.Instance == null) return;
+        SetCurrentGridPosition(ChessGrid.Instance.WorldToGridCoords(transform.position));
+    }
+    
+    public float CalculateNavMeshPathLength(Vector3 targetWorldPos)
+    {
+        NavMeshPath path = new NavMeshPath();
+        if (!NavMesh.CalculatePath(transform.position, targetWorldPos, NavMesh.AllAreas, path) ||
+            path.corners == null || path.corners.Length < 2)
+        {
+            return 0f;
+        }
+        
+        float length = 0f;
+        for (int i = 1; i < path.corners.Length; i++)
+        {
+            length += Vector3.Distance(path.corners[i - 1], path.corners[i]);
+        }
+        return length;
+    }
+    
+    private Vector3 ConstrainMoveVectorToNavMesh(Vector3 moveVector)
+    {
+        if (!constrainActionMovementToNavMesh || moveVector.sqrMagnitude <= 0f)
+        {
+            return moveVector;
+        }
+
+        Vector3 targetPos = transform.position + moveVector;
+        if (NavMesh.SamplePosition(targetPos, out NavMeshHit hit, Mathf.Max(0.1f, navMeshSampleRadius), NavMesh.AllAreas))
+        {
+            Vector3 adjusted = hit.position - transform.position;
+            adjusted.y = 0f;
+            return adjusted;
+        }
+
+        return Vector3.zero;
     }
     
     /// <summary>

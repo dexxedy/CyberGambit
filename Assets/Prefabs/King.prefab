@@ -435,7 +435,7 @@ MonoBehaviour:
   health: 120
   maxHealth: 120
   damage: 15
-  moveSpeed: 1.4
+  moveSpeed: 4
   gravity: -9.81
   mouseSensitivity: 0.1
   maxVerticalAngle: 80
@@ -443,8 +443,11 @@ MonoBehaviour:
   baseMoveSpeed: 5
   minAnimationSpeed: 0.6
   maxAnimationSpeed: 1.2
-  ruleIntegrityPoints: 100
-  integrityCostPerCell: 20
+  remainingSteps: 0
+  remainingMoveMeters: 0
+  constrainActionMovementToNavMesh: 1
+  navMeshSampleRadius: 1.25
+  snapToGridOnStart: 0
   takeDamageSound: {fileID: 8300000, guid: 1500a59580468ea498dd4af0dad4b92d, type: 3}
   unitDeathSound: {fileID: 8300000, guid: d5d1168b7f6e63d4dbe1df69b73e27c4, type: 3}
   unitAudioSource: {fileID: 0}
