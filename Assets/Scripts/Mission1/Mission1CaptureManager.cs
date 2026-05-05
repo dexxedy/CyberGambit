@@ -44,42 +44,31 @@ public class Mission1CaptureManager : MonoBehaviour
             if (flags.Count >= 3) return;
         }
 
-        // 2) если не нашли — создаём 3 флага программно по центру доски
-        ChessGrid grid = ChessGrid.Instance;
-        if (grid == null) return;
-
-        int y = Mathf.Clamp(grid.height / 2, 0, grid.height - 1);
-        int x1 = Mathf.Clamp(grid.width / 4, 0, grid.width - 1);
-        int x2 = Mathf.Clamp(grid.width / 2, 0, grid.width - 1);
-        int x3 = Mathf.Clamp((grid.width * 3) / 4, 0, grid.width - 1);
-
-        // Поднимаем флаги по вертикали примерно на уровень юнитов,
-        // чтобы trigger гарантированно пересекался с CharacterController'ом.
+        // 2) без ChessGrid — три флага по линии в мире вокруг «центра» живых юнитов
         float unitWorldY = 0.5f;
-        Unit anyUnit = FindObjectsByType<Unit>(FindObjectsSortMode.None)
-            .FirstOrDefault(u => u != null && u.GetHealth() > 0);
-        if (anyUnit != null)
+        float spacing = 6f;
+        Vector3 center = Vector3.zero;
+        Unit[] units = FindObjectsByType<Unit>(FindObjectsSortMode.None);
+        int alive = 0;
+        foreach (Unit u in units)
         {
-            unitWorldY = anyUnit.transform.position.y;
+            if (u == null || u.GetHealth() <= 0) continue;
+            center += u.transform.position;
+            alive++;
+            unitWorldY = u.transform.position.y;
         }
-
-        Vector2Int[] coords = new[]
-        {
-            new Vector2Int(x1, y),
-            new Vector2Int(x2, y),
-            new Vector2Int(x3, y)
-        };
+        if (alive > 0) center /= alive;
+        else center = Vector3.zero;
 
         for (int i = 0; i < 3; i++)
         {
             GameObject go = new GameObject($"Mission1FlagZone_{i}");
-            Vector3 flagPos = grid.GridToWorldPosition(coords[i].x, coords[i].y);
+            Vector3 flagPos = center + new Vector3((i - 1) * spacing, 0f, 0f);
             flagPos.y = unitWorldY;
             go.transform.position = flagPos;
             go.transform.rotation = Quaternion.identity;
 
-            // Collider trigger
-            float size = grid.cellSize * 0.6f;
+            float size = 1.5f;
             BoxCollider collider = go.AddComponent<BoxCollider>();
             collider.isTrigger = true;
             collider.size = new Vector3(size, 2f, size);

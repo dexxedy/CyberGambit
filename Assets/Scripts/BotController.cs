@@ -24,6 +24,19 @@ public class BotController : MonoBehaviour
     
     [Header("QTE Settings")]
     [SerializeField] [Range(0f, 1f)] private float qteSuccessChance = 0.5f;
+
+    [Header("Debug")]
+    [SerializeField] private bool debugMission1Bot = false;
+
+    [Header("Mission1 Vision (range + FOV + LOS)")]
+    [SerializeField] private float visionRange = 18f;
+    [SerializeField] [Range(10f, 180f)] private float visionFovDegrees = 120f;
+    [SerializeField] private float visionEyeOffsetY = 1.4f;
+    [SerializeField] private LayerMask visionOcclusionMask = ~0;
+    [Tooltip("Если игрок очень близко, бот замечает его даже вне FOV (360°), но всё ещё требует LOS.")]
+    [SerializeField] private float closeAwarenessRadius = 3.0f;
+
+    // Mission-specific tuning is stored inside mission brains.
     
     private bool isExecutingTurn = false;
     private bool isFirstTurn = true;
@@ -33,6 +46,8 @@ public class BotController : MonoBehaviour
     // История использования юнитов (для ротации)
     private Dictionary<Unit, int> unitLastUsedTurn = new Dictionary<Unit, int>();
     private int currentTurnNumber = 0;
+    public bool CanSeeTargetForBrain(Unit observer, Unit target) => CanSeeTarget(observer, target);
+    public bool TryGetBestVisibleEnemyInAttackRangeForBrain(Unit attacker, out Unit target) => TryGetBestVisibleEnemyInAttackRange(attacker, out target);
     
     // Ценности фигур
     private static readonly Dictionary<ChessUnitType, int> PieceValues = new Dictionary<ChessUnitType, int>
@@ -232,16 +247,14 @@ public class BotController : MonoBehaviour
             moveBudgetMeters = GameManager.Instance.GetCurrentTurnMoveBudgetMeters();
         }
 
-        // Mission1: если на этом же GameObject есть провайдер цели, приоритетно двигаемся к флагам.
-        Mission1BotObjectiveProvider mission1ObjectiveProvider = GetComponent<Mission1BotObjectiveProvider>();
-        if (mission1ObjectiveProvider != null)
+        // Mission brains: each mission can provide its own behavior without bloating BotController.
+        var brains = GetComponents<MonoBehaviour>().OfType<IBotMissionBrain>().ToList();
+        foreach (var brain in brains)
         {
-            Mission1FlagZone targetFlag = mission1ObjectiveProvider.SelectTargetFlag();
-            if (targetFlag != null)
-            {
-                yield return StartCoroutine(ExecuteMission1BotTurn(mission1ObjectiveProvider, targetFlag, moveBudgetMeters));
-                yield break;
-            }
+            if (brain == null) continue;
+            if (!brain.CanRun()) continue;
+            yield return StartCoroutine(brain.ExecuteTurn(this, moveBudgetMeters));
+            yield break;
         }
 
         // 2. ВЫБОР ЮНИТА
@@ -336,7 +349,7 @@ public class BotController : MonoBehaviour
     /// <summary>
     /// Завершение хода
     /// </summary>
-    private void EndTurn()
+    internal void EndTurnInternal()
     {
         isFirstTurn = false;
         isExecutingTurn = false;
@@ -351,6 +364,9 @@ public class BotController : MonoBehaviour
             }
         }
     }
+
+    // Back-compat for existing calls inside BotController.
+    private void EndTurn() => EndTurnInternal();
     
     // ========================================================================
     // ФАЗА 3: ВЫБОР ЮНИТА (НОВАЯ СИСТЕМА ОЦЕНКИ)
@@ -690,7 +706,7 @@ public class BotController : MonoBehaviour
     /// </summary>
     private IEnumerator MoveTowardsEnemy(Unit unit, Unit target, float moveBudgetMeters)
     {
-        if (unit == null || ChessGrid.Instance == null) yield break;
+        if (unit == null) yield break;
         
         moveBudgetMeters = Mathf.Max(0f, moveBudgetMeters);
         if (moveBudgetMeters <= 0f) yield break;
@@ -701,88 +717,314 @@ public class BotController : MonoBehaviour
         yield return StartCoroutine(MoveTowardsWorldTargetByBudget(unit, effectiveTarget.transform.position, moveBudgetMeters));
     }
     
-    private IEnumerator ExecuteMission1BotTurn(Mission1BotObjectiveProvider objectiveProvider, Mission1FlagZone targetFlag, float moveBudgetMeters)
-    {
-        if (objectiveProvider == null || targetFlag == null || ChessGrid.Instance == null)
-        {
-            EndTurn();
-            yield break;
-        }
+    // Mission1 AI is implemented in Mission1BotBrain (Mission1 folder) to keep BotController mission-agnostic.
 
+    private bool TryGetBestVisibleEnemyInAttackRange(Unit attacker, out Unit target)
+    {
+        target = null;
+        if (attacker == null) return false;
         Unit[] allUnits = FindObjectsByType<Unit>(FindObjectsSortMode.None);
-        List<Unit> botUnits = allUnits
-            .Where(u => u != null && u.owner == Player.Player2 && u.GetHealth() > 0)
-            .ToList();
-
-        if (botUnits.Count == 0)
+        List<Unit> enemies = allUnits.Where(u => u != null && u.owner == Player.Player1 && u.GetHealth() > 0).ToList();
+        float best = float.NegativeInfinity;
+        foreach (Unit e in enemies)
         {
-            EndTurn();
-            yield break;
+            if (!CanSeeTarget(attacker, e)) continue;
+            float d = Vector3.Distance(attacker.transform.position, e.transform.position);
+            if (d > attackRange) continue;
+            float score = 100f - d; // ближе = лучше
+            if (score > best)
+            {
+                best = score;
+                target = e;
+            }
         }
-
-        // Выбираем ближайший юнит бота к целевому флагу.
-        Unit selectedUnit = botUnits
-            .OrderBy(u => Vector3.Distance(u.transform.position, targetFlag.transform.position))
-            .FirstOrDefault();
-
-        if (selectedUnit == null)
-        {
-            EndTurn();
-            yield break;
-        }
-
-        selectedUnit.SetRemainingMoveMeters(moveBudgetMeters);
-
-        // Переключаем камеру игрока на приближенный вид над юнитом бота
-        if (CameraManager.Instance != null)
-        {
-            CameraManager.Instance.SwitchToBotUnitView(selectedUnit);
-            yield return new WaitForSeconds(0.6f);
-        }
-
-        yield return StartCoroutine(MoveTowardsFlag(selectedUnit, targetFlag, moveBudgetMeters));
-
-        // Опционально: если после перемещения враг оказался в радиусе атаки — делаем атаку.
-        Unit enemyInRange = FindEnemyInAttackRange(selectedUnit);
-        if (enemyInRange != null)
-        {
-            RotateTowardsTarget(selectedUnit, enemyInRange.transform.position);
-            yield return new WaitForSeconds(0.2f);
-
-            TryUseAbility(selectedUnit);
-            yield return new WaitForSeconds(0.2f);
-
-            yield return StartCoroutine(PerformAttack(selectedUnit, enemyInRange));
-        }
-
-        yield return new WaitForSeconds(0.3f);
-        EndTurn();
+        return target != null;
     }
 
-    private IEnumerator MoveTowardsFlag(Unit unit, Mission1FlagZone targetFlag, float moveBudgetMeters)
+    private bool CanSeeTarget(Unit observer, Unit target)
     {
-        if (unit == null || targetFlag == null || ChessGrid.Instance == null) yield break;
-        
-        moveBudgetMeters = Mathf.Max(0f, moveBudgetMeters);
-        if (moveBudgetMeters <= 0f) yield break;
+        if (observer == null || target == null) return false;
+        if (target.GetHealth() <= 0) return false;
 
-        yield return StartCoroutine(MoveTowardsWorldTargetByBudget(unit, targetFlag.transform.position, moveBudgetMeters));
+        Vector3 eye = observer.transform.position + Vector3.up * visionEyeOffsetY;
+        Vector3 toTarget = (target.transform.position + Vector3.up * 1.0f) - eye;
+        float dist = toTarget.magnitude;
+        if (dist > Mathf.Max(0f, visionRange)) return false;
+
+        Vector3 dir = dist > 0.001f ? (toTarget / dist) : observer.transform.forward;
+        // Если игрок очень близко — замечаем его даже сзади (360°), но всё равно требуем LOS.
+        float ca = Mathf.Max(0f, closeAwarenessRadius);
+        if (dist > ca)
+        {
+            float angle = Vector3.Angle(observer.transform.forward, dir);
+            if (angle > Mathf.Max(1f, visionFovDegrees) * 0.5f) return false;
+        }
+
+        if (Physics.Raycast(eye, dir, out RaycastHit hit, dist, visionOcclusionMask, QueryTriggerInteraction.Ignore))
+        {
+            Unit hitUnit = hit.collider != null ? hit.collider.GetComponentInParent<Unit>() : null;
+            bool ok = hitUnit == target;
+            if (debugMission1Bot)
+            {
+                Debug.DrawLine(eye, hit.point, ok ? Color.green : Color.red, 0.2f);
+            }
+            return ok;
+        }
+
+        // если ничего не задели raycast'ом, считаем что LOS чистый
+        if (debugMission1Bot)
+        {
+            Debug.DrawLine(eye, eye + dir * dist, Color.yellow, 0.2f);
+        }
+        return true;
     }
 
-    private IEnumerator MoveTowardsWorldTargetByBudget(Unit unit, Vector3 targetWorldPos, float moveBudgetMeters)
+    private void OnDrawGizmosSelected()
+    {
+        if (!debugMission1Bot) return;
+        if (GameManager.Instance == null) return;
+        if (GameManager.Instance.GetGameMode() != GameMode.PlayerVsBot) return;
+
+        // Рисуем "конус зрения" вокруг бота-контроллера (по ближайшему живому юниту Player2)
+        Unit[] allUnits = FindObjectsByType<Unit>(FindObjectsSortMode.None);
+        Unit botUnit = allUnits
+            .Where(u => u != null && u.owner == Player.Player2 && u.GetHealth() > 0)
+            .OrderBy(u => Vector3.Distance(u.transform.position, transform.position))
+            .FirstOrDefault();
+        if (botUnit == null) return;
+
+        Vector3 eye = botUnit.transform.position + Vector3.up * visionEyeOffsetY;
+        Gizmos.color = Color.cyan;
+        Gizmos.DrawWireSphere(eye, Mathf.Max(0f, visionRange));
+
+        Vector3 fwd = botUnit.transform.forward;
+        float half = Mathf.Max(1f, visionFovDegrees) * 0.5f;
+        Vector3 left = Quaternion.Euler(0f, -half, 0f) * fwd;
+        Vector3 right = Quaternion.Euler(0f, half, 0f) * fwd;
+        Gizmos.DrawLine(eye, eye + left * Mathf.Min(visionRange, 6f));
+        Gizmos.DrawLine(eye, eye + right * Mathf.Min(visionRange, 6f));
+    }
+
+    internal IEnumerator MoveTowardsWorldTargetByBudgetInternal(Unit unit, Vector3 targetWorldPos, float moveBudgetMeters)
     {
         if (unit == null) yield break;
 
         Vector3 startPosition = unit.transform.position;
-        if (!TryGetReachablePointByBudget(startPosition, targetWorldPos, moveBudgetMeters, out Vector3 reachablePoint, out float travelledMeters))
+
+        // Строим путь (NavMesh) и двигаемся по corner'ам, а не прямой линией — иначе юнит будет пытаться идти "сквозь стену" и утыкаться.
+        if (!TryGetPathCornersByBudget(startPosition, targetWorldPos, moveBudgetMeters, out Vector3[] corners, out float travelledMeters))
         {
+            if (debugMission1Bot)
+            {
+                Debug.LogWarning($"[BotNavMesh] NavMesh path не построен. unit={unit.name}, from={startPosition}, target={targetWorldPos}, budget={moveBudgetMeters:0.00}m. " +
+                                 "Проверь, что юнит и цель стоят на NavMesh и NavMesh запечён.");
+            }
             yield break;
         }
 
-        if (travelledMeters <= 0.01f) yield break;
-        RotateTowardsTarget(unit, reachablePoint);
+        if (travelledMeters <= 0.01f)
+        {
+            // Уже на месте / слишком близко: это не ошибка, просто нечего двигать.
+            if (debugMission1Bot)
+            {
+                Debug.Log($"[BotNavMesh] Движение не требуется (travelledMeters≈0). unit={unit.name}, pos={startPosition}, target={targetWorldPos}");
+            }
+            yield break;
+        }
+
+        // Визуализация хода бота (без движения камеры): покажем путь и цель.
+        if (GameManager.Instance != null && GameManager.Instance.GetGameMode() == GameMode.PlayerVsBot &&
+            CameraManager.Instance != null && !CameraManager.Instance.IsActionMode() &&
+            BotTurnTacticalOverlay.Instance != null)
+        {
+            var pts = BuildPointsTrimmedByDistance(corners, travelledMeters);
+            if (pts != null && pts.Count >= 2)
+                BotTurnTacticalOverlay.Instance.ShowMovePath(unit, pts, pts[pts.Count - 1]);
+        }
+
+        Vector3 firstLook = corners != null && corners.Length > 0 ? corners[Mathf.Min(1, corners.Length - 1)] : targetWorldPos;
+        RotateTowardsTarget(unit, firstLook);
         yield return new WaitForSeconds(moveDelay);
-        yield return StartCoroutine(MoveUnitToWorldPoint(unit, reachablePoint, travelledMeters));
+        yield return StartCoroutine(MoveUnitAlongCorners(unit, corners, travelledMeters));
+
+        if (BotTurnTacticalOverlay.Instance != null)
+            BotTurnTacticalOverlay.Instance.Clear(unit);
+    }
+
+    private IEnumerator MoveTowardsWorldTargetByBudget(Unit unit, Vector3 targetWorldPos, float moveBudgetMeters)
+        => MoveTowardsWorldTargetByBudgetInternal(unit, targetWorldPos, moveBudgetMeters);
+
+    internal IEnumerator PerformAttackInternal(Unit attacker, Unit target)
+    {
+        if (GameManager.Instance != null && GameManager.Instance.GetGameMode() == GameMode.PlayerVsBot &&
+            CameraManager.Instance != null && !CameraManager.Instance.IsActionMode() &&
+            BotTurnTacticalOverlay.Instance != null && target != null)
+        {
+            BotTurnTacticalOverlay.Instance.Ping(target.transform.position);
+        }
+
+        yield return PerformAttack(attacker, target);
+    }
+
+    private static List<Vector3> BuildPointsTrimmedByDistance(Vector3[] corners, float maxDistance)
+    {
+        if (corners == null || corners.Length < 2) return null;
+        float remaining = Mathf.Max(0f, maxDistance);
+
+        List<Vector3> pts = new List<Vector3>(corners.Length);
+        pts.Add(corners[0]);
+
+        for (int i = 1; i < corners.Length && remaining > 0.001f; i++)
+        {
+            Vector3 a = pts[pts.Count - 1];
+            Vector3 b = corners[i];
+            Vector3 delta = b - a;
+            delta.y = 0f;
+            float seg = delta.magnitude;
+            if (seg <= 0.001f) continue;
+
+            if (seg <= remaining)
+            {
+                pts.Add(b);
+                remaining -= seg;
+            }
+            else
+            {
+                Vector3 dir = delta / seg;
+                Vector3 end = a + dir * remaining;
+                end.y = b.y; // оставим высоту как у следующего corner
+                pts.Add(end);
+                remaining = 0f;
+                break;
+            }
+        }
+
+        return pts;
+    }
+
+    private bool TryGetPathCornersByBudget(Vector3 from, Vector3 target, float budgetMeters, out Vector3[] corners, out float travelledMeters)
+    {
+        corners = null;
+        travelledMeters = 0f;
+        if (budgetMeters <= 0f) return false;
+
+        // Приводим старт/цель к ближайшим точкам на NavMesh.
+        // В некоторых сценах pivot у юнитов/целей может быть высоко над полом (Y-offset).
+        // Поэтому берём больший радиус снэпа, чтобы стабильно находить ближайшую точку на NavMesh.
+        float sampleRadius = Mathf.Clamp(Mathf.Abs(from.y) + 2.0f, 2.0f, 12.0f);
+        float targetSampleRadius = Mathf.Clamp(Mathf.Abs(target.y) + 2.0f, 2.0f, 12.0f);
+
+        if (NavMesh.SamplePosition(from, out NavMeshHit fromHit, sampleRadius, NavMesh.AllAreas))
+            from = OffsetFromNavMeshEdge(fromHit.position, 0.35f);
+        if (NavMesh.SamplePosition(target, out NavMeshHit targetHit, targetSampleRadius, NavMesh.AllAreas))
+            target = OffsetFromNavMeshEdge(targetHit.position, 0.35f);
+
+        if (Vector3.Distance(from, target) <= 0.25f)
+        {
+            corners = new[] { from, target };
+            travelledMeters = 0f;
+            return true;
+        }
+
+        NavMeshPath path = new NavMeshPath();
+        if (!NavMesh.CalculatePath(from, target, NavMesh.AllAreas, path) ||
+            path.corners == null || path.corners.Length == 0)
+        {
+            return false;
+        }
+
+        if (path.corners.Length < 2)
+        {
+            corners = path.corners;
+            travelledMeters = 0f;
+            return true;
+        }
+
+        float totalLength = 0f;
+        for (int i = 1; i < path.corners.Length; i++)
+            totalLength += Vector3.Distance(path.corners[i - 1], path.corners[i]);
+
+        if (totalLength <= 0.01f) return false;
+
+        travelledMeters = Mathf.Min(totalLength, budgetMeters);
+        corners = path.corners;
+        return true;
+    }
+
+    private static Vector3 OffsetFromNavMeshEdge(Vector3 pos, float insetMeters)
+    {
+        float inset = Mathf.Clamp(insetMeters, 0f, 2f);
+        if (inset <= 0f) return pos;
+        if (NavMesh.FindClosestEdge(pos, out NavMeshHit hit, NavMesh.AllAreas))
+        {
+            // Move inside the navmesh, away from the closest edge.
+            Vector3 n = hit.normal;
+            n.y = 0f;
+            if (n.sqrMagnitude > 0.0001f)
+            {
+                n.Normalize();
+                return pos + n * inset;
+            }
+        }
+        return pos;
+    }
+
+    private IEnumerator MoveUnitAlongCorners(Unit unit, Vector3[] corners, float maxDistanceMeters)
+    {
+        if (unit == null) yield break;
+        if (corners == null || corners.Length < 2) yield break;
+
+        CharacterController controller = unit.GetComponent<CharacterController>();
+        float remaining = Mathf.Max(0f, maxDistanceMeters);
+
+        // Начинаем с текущей позиции (не обязательно совпадает с corners[0]).
+        Vector3 current = unit.transform.position;
+        for (int i = 1; i < corners.Length && remaining > 0.001f; i++)
+        {
+            Vector3 target = corners[i];
+            target.y = current.y;
+
+            Vector3 to = target - current;
+            to.y = 0f;
+            float seg = to.magnitude;
+            if (seg <= 0.01f)
+            {
+                current = target;
+                continue;
+            }
+
+            float take = Mathf.Min(seg, remaining);
+            Vector3 dir = to / seg;
+            Vector3 end = current + dir * take;
+
+            // Двигаемся к end небольшими шагами, чтобы CC корректно сталкивался со стенами.
+            float speed = Mathf.Max(0.1f, unit.MoveSpeed);
+            float duration = Mathf.Clamp(take / speed, 0.05f, 2.5f);
+            float elapsed = 0f;
+            Vector3 start = unit.transform.position;
+            RotateTowardsTarget(unit, end);
+
+            while (elapsed < duration)
+            {
+                elapsed += Time.deltaTime;
+                float t = Mathf.Clamp01(elapsed / duration);
+                Vector3 nextPos = Vector3.Lerp(start, end, t);
+                Vector3 move = nextPos - unit.transform.position;
+                move.y = 0f;
+
+                if (controller != null && controller.enabled) controller.Move(move);
+                else unit.transform.position = nextPos;
+
+                unit.RefreshGridPositionFromWorld();
+                yield return null;
+            }
+
+            current = unit.transform.position;
+            remaining -= take;
+        }
+
+        unit.ConsumeMoveMeters(maxDistanceMeters - Mathf.Max(0f, remaining));
+        unit.RefreshGridPositionFromWorld();
     }
 
     private bool TryGetReachablePointByBudget(Vector3 from, Vector3 target, float budgetMeters, out Vector3 reachablePoint, out float travelledMeters)
@@ -791,11 +1033,34 @@ public class BotController : MonoBehaviour
         travelledMeters = 0f;
         if (budgetMeters <= 0f) return false;
 
+        // Приводим старт/цель к ближайшим точкам на NavMesh, чтобы CalculatePath не падал на Y-offset/pivot.
+        const float sampleRadius = 2.0f;
+        if (NavMesh.SamplePosition(from, out NavMeshHit fromHit, sampleRadius, NavMesh.AllAreas))
+            from = fromHit.position;
+        if (NavMesh.SamplePosition(target, out NavMeshHit targetHit, sampleRadius, NavMesh.AllAreas))
+            target = targetHit.position;
+
+        // Если уже достаточно близко к цели — это успешный случай, просто не нужно двигаться.
+        if (Vector3.Distance(from, target) <= 0.25f)
+        {
+            reachablePoint = from;
+            travelledMeters = 0f;
+            return true;
+        }
+
         NavMeshPath path = new NavMeshPath();
         if (!NavMesh.CalculatePath(from, target, NavMesh.AllAreas, path) ||
-            path.corners == null || path.corners.Length < 2)
+            path.corners == null || path.corners.Length == 0)
         {
             return false;
+        }
+
+        // Unity иногда возвращает 1 corner, если цель почти совпадает со стартом.
+        if (path.corners.Length < 2)
+        {
+            reachablePoint = path.corners[0];
+            travelledMeters = 0f;
+            return true;
         }
 
         float totalLength = 0f;
@@ -861,11 +1126,13 @@ public class BotController : MonoBehaviour
             yield return null;
         }
 
+        // ВАЖНО: не телепортируем через коллайдеры (controller.enabled=false -> SetPosition),
+        // иначе юнит может "пройти сквозь стену". Делаем финальную доводку через Move().
         if (controller != null && controller.enabled)
         {
-            controller.enabled = false;
-            unit.transform.position = worldPos;
-            controller.enabled = true;
+            Vector3 finalMove = worldPos - unit.transform.position;
+            finalMove.y = 0f;
+            controller.Move(finalMove);
         }
         else
         {
@@ -1461,6 +1728,43 @@ public class BotController : MonoBehaviour
         {
             yield break;
         }
+
+        // Если у атакующего есть экипированное оружие — атакуем огнестрелом (hitscan) без рывка/WeaponCollider.
+        Weapon ranged = attacker.GetEquippedWeapon();
+        if (ranged != null && ranged.Config != null)
+        {
+            // Атакуем только если цель реально видима экшен-зрением.
+            if (!CanSeeTarget(attacker, target))
+                yield break;
+
+            RotateTowardsTarget(attacker, target.transform.position);
+            yield return new WaitForSeconds(attackDelay);
+
+            Vector3 origin = ranged.Muzzle != null ? ranged.Muzzle.position : (attacker.transform.position + Vector3.up * visionEyeOffsetY);
+            Vector3 aimPoint = target.transform.position + Vector3.up * 1.0f;
+            Vector3 dir = (aimPoint - origin);
+            if (dir.sqrMagnitude < 0.0001f) yield break;
+            dir.Normalize();
+
+            // если пустой магазин — пробуем перезарядиться, иначе стрелять
+            if (ranged.AmmoInMag <= 0)
+            {
+                ranged.TryStartReload();
+                // небольшой "такт" на начало перезарядки
+                yield return new WaitForSeconds(0.15f);
+                yield break;
+            }
+
+            bool fired = ranged.TryFire(attacker, origin, dir);
+            if (debugMission1Bot) Debug.Log($"[Mission1Bot] RangedFire attacker={attacker.name} target={target.name} fired={fired} ammo={ranged.AmmoInMag}/{ranged.AmmoReserve}");
+            yield return new WaitForSeconds(0.2f);
+            yield break;
+        }
+
+        // Мили-урон в проекте часто завязан на WeaponCollider + IsAttacking() (анимации).
+        // Для Mission1 бота делаем безопасный фоллбек: если после Attack() HP цели не изменился,
+        // наносим урон напрямую (без зависимости от анимаций), чтобы бот не "махал впустую".
+        bool hasWeaponCollider = attacker.GetComponentInChildren<WeaponCollider>(true) != null;
         
         float distance = GetDistance(attacker, target);
         
@@ -1540,15 +1844,49 @@ public class BotController : MonoBehaviour
             else
             {
                 // QTE не запустился - атакуем как обычно
+                int hpBefore = target.GetHealth();
                 attacker.Attack();
-                yield return new WaitForSeconds(1.0f);
+
+                // Даем шанс коллайдеру/анимации нанести урон
+                yield return new WaitForSeconds(0.35f);
+
+                int hpAfter = target.GetHealth();
+                bool colliderProbablyHit = hpAfter < hpBefore;
+                if (!colliderProbablyHit)
+                {
+                    if (GetDistance(attacker, target) <= attackRange * 1.15f)
+                    {
+                        int finalDamage = Mathf.RoundToInt(attacker.Damage * attacker.GetDamageMultiplier());
+                        target.TakeDamage(finalDamage, attacker);
+                        if (debugMission1Bot) Debug.Log($"[Mission1Bot] MeleeFallbackDamage attacker={attacker.name} target={target.name} dmg={finalDamage} (hasCollider={hasWeaponCollider})");
+                    }
+                }
+
+                yield return new WaitForSeconds(0.15f);
             }
         }
         else
         {
             // Цель не юнит игрока или QTE система недоступна - атакуем как обычно
+            int hpBefore = target.GetHealth();
             attacker.Attack();
-            yield return new WaitForSeconds(1.0f);
+
+            // Даем шанс коллайдеру/анимации нанести урон
+            yield return new WaitForSeconds(0.35f);
+
+            int hpAfter = target.GetHealth();
+            bool colliderProbablyHit = hpAfter < hpBefore;
+            if (!colliderProbablyHit)
+            {
+                if (GetDistance(attacker, target) <= attackRange * 1.15f)
+                {
+                    int finalDamage = Mathf.RoundToInt(attacker.Damage * attacker.GetDamageMultiplier());
+                    target.TakeDamage(finalDamage, attacker);
+                    if (debugMission1Bot) Debug.Log($"[Mission1Bot] MeleeFallbackDamage attacker={attacker.name} target={target.name} dmg={finalDamage} (hasCollider={hasWeaponCollider})");
+                }
+            }
+
+            yield return new WaitForSeconds(0.15f);
         }
     }
     

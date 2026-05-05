@@ -2,15 +2,10 @@ using UnityEngine;
 using UnityEngine.InputSystem;
 using TMPro; // Для TextMeshProUGUI (таймер)
 using System.Collections;
+using Mission2;
 
 public class CameraManager : MonoBehaviour
 {
-    public enum TacticalInputMode
-    {
-        MapOnly,
-        MapPlusFly
-    }
-
     public static CameraManager Instance;
     [SerializeField] private Camera tacticalCamera; // Камера вида сверху
     [SerializeField] private Camera actionCamera; // Камера от первого лица
@@ -27,13 +22,20 @@ public class CameraManager : MonoBehaviour
     [SerializeField] private float maxArenaZ = 16f; // Максимальная координата Z
 
     [SerializeField] private float flySpeed = 10f; 
-    [SerializeField] private float rotationSpeed = 0.5f; 
     [SerializeField] private float minCameraHeight = 1f; 
-    [SerializeField] private float maxCameraHeight = 15f;
+    [SerializeField] private float maxCameraHeight = 60f;
+    [Header("Tactical Edge Scroll")]
+    [SerializeField] private bool enableEdgeScroll = true;
+    [SerializeField] private float edgeScrollBorderPx = 18f;
+    [SerializeField] private float edgeScrollSpeedMultiplier = 1.0f;
+    [Header("Tactical Rotation (Yaw only)")]
+    [SerializeField] private bool enableYawRotation = true;
+    [SerializeField] private float yawRotationSpeed = 0.25f;
+    [Header("Tactical Zoom (Mouse Wheel)")]
+    [SerializeField] private bool enableZoom = true;
+    [SerializeField] private float zoomSpeed = 2.0f;
     [SerializeField] private TextMeshProUGUI turnText;
     [SerializeField] private GameObject turnPanel; // Панель с текстом хода
-    [Header("Tactical Input Mode")]
-    [SerializeField] private TacticalInputMode tacticalInputMode = TacticalInputMode.MapPlusFly;
     
     private Unit currentUnit; // Текущий выбранный юнит
     private bool isActionMode = false; // Флаг режима (false - тактический, true - экшен)
@@ -47,6 +49,22 @@ public class CameraManager : MonoBehaviour
     private Quaternion savedTacticalRotation; // Сохраненная ротация тактической камеры
     private Coroutine followBotUnitCoroutine; // Корутина следования за юнитом бота
     private Coroutine returnCameraCoroutine; // Корутина возврата камеры
+
+    [Header("Tactical Camera Follow")]
+    [Tooltip("Если включено — при начале хода камера центрируется над последним юнитом этого игрока.")]
+    [SerializeField] private bool centerTacticalCameraOnLastPlayedUnit = true;
+    [Tooltip("Мировой Y-offset для центрирования (обычно 0).")]
+    [SerializeField] private float centerOnUnitWorldOffsetY = 0f;
+
+    private Unit lastPlayedUnitPlayer1;
+    private Unit lastPlayedUnitPlayer2;
+
+    [Header("Bot Turn Presentation")]
+    [Tooltip("Если включено — камера НЕ следует за ботом; бот показывается подсказками/траекториями.")]
+    [SerializeField] private bool disableBotFollowCamera = true;
+
+    [Tooltip("Если включено — в PvBot тактическая камера НЕ сбрасывается в фиксированную позицию при смене хода.")]
+    [SerializeField] private bool preserveTacticalCameraInPvBot = true;
 
     void Awake()
     {
@@ -83,6 +101,8 @@ public class CameraManager : MonoBehaviour
             turnText.text = $"Ход: {GameManager.Instance.currentPlayer}";
         }
 
+        if (TacticalWorldIconsController.Instance != null && TacticalWorldIconsController.Instance.IsConfigured())
+            TacticalUnitPresentation.ApplyGlobal(true);
     }
 
     void Update()
@@ -117,49 +137,15 @@ public class CameraManager : MonoBehaviour
                 {
                     BotController.Instance.ExecuteBotTurn();
                 }
+
+                // В PvBot игрок всё равно должен иметь возможность двигать тактическую камеру,
+                // чтобы наблюдать за траекториями/подсказками хода бота.
+                HandleTacticalCameraMovement();
             }
             else
             {
-                // Обычная логика для игрока
-                if (tacticalInputMode == TacticalInputMode.MapPlusFly)
-                {
-                    HandleTacticalCameraMovement();
-                    if (Mouse.current.leftButton.wasPressedThisFrame)
-                    {
-                        Ray ray = tacticalCamera.ScreenPointToRay(Mouse.current.position.ReadValue());
-                        if (Physics.Raycast(ray, out RaycastHit hit, Mathf.Infinity, unitLayer))
-                        {
-                            Unit unit = hit.collider.GetComponent<Unit>();
-                            if (unit != null && unit.owner == GameManager.Instance.currentPlayer)
-                            {
-                                // Нужно иметь бросок костей на текущий ход
-                                if (GameManager.Instance != null && !GameManager.Instance.HasRolledDiceThisTurn())
-                                {
-                                    return;
-                                }
-
-                                // На первом ходе игрока нельзя выбирать фигуру, которая "сзади" (впереди стоит союзник)
-                                if (GameManager.Instance != null &&
-                                    GameManager.Instance.IsFirstTurnForPlayer(GameManager.Instance.currentPlayer) &&
-                                    IsFirstStepForwardImpossible(unit))
-                                {
-                                    return;
-                                }
-                                
-                                // Воспроизводим звук выбора юнита
-                                if (AudioManager.Instance != null)
-                                {
-                                    AudioManager.Instance.PlayUnitSelect();
-                                }
-                                SwitchToActionMode(unit);
-                            }
-                            else
-                            {
-                                // Нельзя выбрать: не твой юнит или не твой ход
-                            }
-                        }
-                    }
-                }
+                // Тактика: полёт камеры (WASD). Выбор своего юнита — через UI-иконки (TacticalWorldIconsController).
+                HandleTacticalCameraMovement();
             }
         }
     }
@@ -200,6 +186,9 @@ public class CameraManager : MonoBehaviour
 
         currentUnit = unit;
         currentUnit.SetControlled(true);
+
+        // Remember last played unit for this player.
+        RememberLastPlayedUnit(unit);
         
         // Инициализируем бюджет перемещения в метрах из броска костей
         if (GameManager.Instance != null)
@@ -207,7 +196,7 @@ public class CameraManager : MonoBehaviour
             currentUnit.SetRemainingMoveMeters(GameManager.Instance.GetCurrentTurnMoveBudgetMeters());
         }
 
-        // НОВОЕ: Показать разрешенные ходы при входе в экшен-режим
+        // Подсветка клеток — только если есть шахматная сетка и GridHighlighter в сцене
         if (GridHighlighter.Instance != null)
         {
             GridHighlighter.Instance.ShowAllowedMoves(unit);
@@ -227,6 +216,8 @@ public class CameraManager : MonoBehaviour
         Cursor.visible = false;
 
         isActionMode = true;
+
+        TacticalUnitPresentation.ApplyGlobal(false);
         
         // Воспроизводим звук перехода в экшен-режим
         if (AudioManager.Instance != null)
@@ -243,10 +234,6 @@ public class CameraManager : MonoBehaviour
         }
         
         if (turnPanel != null) turnPanel.SetActive(false);
-        if (TacticalMapUIController.Instance != null)
-        {
-            TacticalMapUIController.Instance.HideMap();
-        }
         StartCoroutine(ActionTimer());
     }
 
@@ -308,7 +295,10 @@ public class CameraManager : MonoBehaviour
             // НЕ уничтожайте юнит здесь. Он должен быть уничтожен только в Unit.Die().
             currentUnit = null; 
         }
-        GridHighlighter.Instance.ClearHighlights();
+        if (GridHighlighter.Instance != null)
+        {
+            GridHighlighter.Instance.ClearHighlights();
+        }
         // 🚨 ФИКС: Проверяем, существует ли actionCamera перед использованием
         if (actionCamera != null)
         {
@@ -336,10 +326,9 @@ public class CameraManager : MonoBehaviour
         Cursor.visible = true;
 
         isActionMode = false;
-        if (TacticalMapUIController.Instance != null)
-        {
-            TacticalMapUIController.Instance.ShowMap();
-        }
+
+        if (TacticalWorldIconsController.Instance != null && TacticalWorldIconsController.Instance.IsConfigured())
+            TacticalUnitPresentation.ApplyGlobal(true);
 
         // Скрываем панели статистики через ActionModeUI
         if (ActionModeUI.Instance != null)
@@ -349,13 +338,18 @@ public class CameraManager : MonoBehaviour
         
         // Если игра еще не завершена, переключаем ход
         GameManager.Instance.SwitchTurn();
-        SetTacticalCameraPosition(GameManager.Instance.currentPlayer);
+        // В PvBot обычно не сбрасываем камеру, но если ход вернулся игроку — центрируем на последнем сыгранном юните.
+        if (preserveTacticalCameraInPvBot && GameManager.Instance != null && GameManager.Instance.GetGameMode() == GameMode.PlayerVsBot)
+        {
+            if (!GameManager.Instance.IsBotTurn())
+                SetTacticalCameraPosition(GameManager.Instance.currentPlayer);
+        }
+        else
+        {
+            SetTacticalCameraPosition(GameManager.Instance.currentPlayer);
+        }
         if (turnPanel != null) turnPanel.SetActive(true);
         if (turnText != null) turnText.text = $"Ход: {GameManager.Instance.currentPlayer}";
-        if (TacticalMapUIController.Instance != null)
-        {
-            TacticalMapUIController.Instance.RefreshAllIconsFromUnits();
-        }
     }
 
     public void TrySwitchToActionModeFromMap(Unit unit)
@@ -363,7 +357,6 @@ public class CameraManager : MonoBehaviour
         if (unit == null || GameManager.Instance == null) return;
         if (isActionMode) return;
         if (unit.owner != GameManager.Instance.currentPlayer) return;
-        if (!GameManager.Instance.HasRolledDiceThisTurn()) return;
         if (GameManager.Instance.IsBotTurn()) return;
 
         if (GameManager.Instance.IsFirstTurnForPlayer(GameManager.Instance.currentPlayer) &&
@@ -372,11 +365,37 @@ public class CameraManager : MonoBehaviour
             return;
         }
 
+        if (AudioManager.Instance != null)
+            AudioManager.Instance.PlayUnitSelect();
+
+        // Mission2 change: tank is controlled like a normal unit (action/FPS mode).
+
+        if (!GameManager.Instance.HasRolledDiceThisTurn()) return;
         SwitchToActionMode(unit);
     }
 
     private void SetTacticalCameraPosition(Player player)
     {
+        if (centerTacticalCameraOnLastPlayedUnit)
+        {
+            Unit u = (player == Player.Player1) ? lastPlayedUnitPlayer1 : lastPlayedUnitPlayer2;
+            if (u != null && u.GetHealth() > 0 && tacticalCamera != null)
+            {
+                Vector3 p = tacticalCamera.transform.position;
+                Vector3 up = Vector3.up * Mathf.Max(0f, centerOnUnitWorldOffsetY);
+                p.x = u.transform.position.x + up.x;
+                p.z = u.transform.position.z + up.z;
+                p.y = Mathf.Clamp(p.y, minCameraHeight, maxCameraHeight);
+                p.x = Mathf.Clamp(p.x, minArenaX, maxArenaX);
+                p.z = Mathf.Clamp(p.z, minArenaZ, maxArenaZ);
+                tacticalCamera.transform.position = p;
+
+                // Keep current rotation (player can yaw/zoom). If you prefer fixed, uncomment:
+                // tacticalCamera.transform.rotation = player == Player.Player1 ? player1TacticalRotation : player2TacticalRotation;
+                return;
+            }
+        }
+
         // Если игра против бота, камера всегда остается на стороне Player1
         if (GameManager.Instance != null && GameManager.Instance.IsBotTurn())
         {
@@ -398,6 +417,13 @@ public class CameraManager : MonoBehaviour
             tacticalCamera.transform.rotation = player2TacticalRotation;
         }
     }
+
+    private void RememberLastPlayedUnit(Unit unit)
+    {
+        if (unit == null) return;
+        if (unit.owner == Player.Player1) lastPlayedUnitPlayer1 = unit;
+        else lastPlayedUnitPlayer2 = unit;
+    }
     
     /// <summary>
     /// Обновляет камеру и UI для текущего игрока (используется ботом)
@@ -406,6 +432,17 @@ public class CameraManager : MonoBehaviour
     {
         if (GameManager.Instance != null)
         {
+            // В PvBot камера должна оставаться там, где её оставил игрок.
+            if (preserveTacticalCameraInPvBot && GameManager.Instance.GetGameMode() == GameMode.PlayerVsBot)
+            {
+                // Но когда ход возвращается игроку, центрируем над последним сыгранным юнитом.
+                if (!GameManager.Instance.IsBotTurn())
+                    SetTacticalCameraPosition(GameManager.Instance.currentPlayer);
+                if (turnText != null)
+                    turnText.text = GameManager.Instance.IsBotTurn() ? "Ход: Бот" : $"Ход: {GameManager.Instance.currentPlayer}";
+                return;
+            }
+
             // Если камера следовала за юнитом бота, возвращаем её на исходную позицию
             if (isFollowingBotUnit && !isReturningCamera)
             {
@@ -458,6 +495,7 @@ public class CameraManager : MonoBehaviour
     /// <param name="botUnit">Юнит бота, за которым должна следовать камера</param>
     public void SwitchToBotUnitView(Unit botUnit)
     {
+        if (disableBotFollowCamera) return;
         if (botUnit == null) return;
         
         // Сохраняем текущую позицию и ротацию камеры (если еще не сохранена)
@@ -493,6 +531,8 @@ public class CameraManager : MonoBehaviour
         // Плавно перемещаем камеру к новой позиции
         StartCoroutine(MoveCameraToBotUnit(cameraPosition, cameraRotation, botUnit));
     }
+
+    public bool IsBotFollowCameraEnabled() => !disableBotFollowCamera;
     
     /// <summary>
     /// Плавно перемещает камеру к позиции над юнитом бота
@@ -640,49 +680,76 @@ public class CameraManager : MonoBehaviour
     }
     private void HandleTacticalCameraMovement()
     {
-        // --- 1. Обработка движения WASD ---
+        // --- 1) Обработка движения WASD + edge scroll (без вращения камеры) ---
 
-        // Считываем WASD как float-значения (новая система ввода)
         Vector2 moveInput = new Vector2(
-        Keyboard.current.dKey.IsActuated() ? 1f : (Keyboard.current.aKey.IsActuated() ? -1f : 0f),
-        Keyboard.current.wKey.IsActuated() ? 1f : (Keyboard.current.sKey.IsActuated() ? -1f : 0f)
-        ).normalized; 
+            Keyboard.current.dKey.IsActuated() ? 1f : (Keyboard.current.aKey.IsActuated() ? -1f : 0f),
+            Keyboard.current.wKey.IsActuated() ? 1f : (Keyboard.current.sKey.IsActuated() ? -1f : 0f)
+        );
 
-        // 🚨 ФИКС: Используем полные 3D векторы forward/right камеры.
-        // Движение вперед (W/S) теперь будет иметь Y-компонент, который обеспечивает подъем/спуск.
-        Vector3 totalMovement = tacticalCamera.transform.forward * moveInput.y * flySpeed * Time.deltaTime
-                              + tacticalCamera.transform.right * moveInput.x * flySpeed * Time.deltaTime;
+        if (enableEdgeScroll && Mouse.current != null)
+        {
+            Vector2 mp = Mouse.current.position.ReadValue();
+            float w = Screen.width;
+            float h = Screen.height;
+            float b = Mathf.Max(0f, edgeScrollBorderPx);
 
+            float sx = 0f;
+            float sy = 0f;
+            if (mp.x <= b) sx = -1f;
+            else if (mp.x >= w - b) sx = 1f;
+            if (mp.y <= b) sy = -1f;
+            else if (mp.y >= h - b) sy = 1f;
+
+            moveInput += new Vector2(sx, sy) * Mathf.Max(0f, edgeScrollSpeedMultiplier);
+        }
+
+        moveInput = moveInput.sqrMagnitude > 1f ? moveInput.normalized : moveInput;
+
+        // Двигаем только по плоскости XZ (Battlefield/RTS), высота регулируется лимитами.
+        Vector3 forwardXZ = tacticalCamera.transform.forward;
+        forwardXZ.y = 0f;
+        forwardXZ = forwardXZ.sqrMagnitude > 0.0001f ? forwardXZ.normalized : Vector3.forward;
+
+        Vector3 rightXZ = tacticalCamera.transform.right;
+        rightXZ.y = 0f;
+        rightXZ = rightXZ.sqrMagnitude > 0.0001f ? rightXZ.normalized : Vector3.right;
+
+        Vector3 totalMovement = (forwardXZ * moveInput.y + rightXZ * moveInput.x) * flySpeed * Time.deltaTime;
         tacticalCamera.transform.position += totalMovement;
 
-
-        // --- 2. Обработка вращения (правая кнопка мыши) ---
-
-        // Вращение активируется при удержании правой кнопки мыши
-        if (Mouse.current.rightButton.isPressed)
+        // --- 2) Вращение только по сторонам (Yaw вокруг Y) ---
+        if (enableYawRotation && Mouse.current != null && Mouse.current.rightButton.isPressed)
         {
-            // 💡 Новая система ввода: скрываем курсор и читаем дельту
+            // Скрываем курсор и читаем дельту только по X
             Cursor.lockState = CursorLockMode.Locked;
             Cursor.visible = false;
 
             Vector2 delta = Mouse.current.delta.ReadValue();
-
-            // Вращение по Y (горизонталь)
-            tacticalCamera.transform.Rotate(Vector3.up, delta.x * rotationSpeed, Space.World);
-
-            // Вращение по X (вертикаль, вокруг локальной оси)
-            // Мы вращаем сам объект камеры (или его родителя, если tacticalCamera - родитель)
-            tacticalCamera.transform.Rotate(Vector3.left, delta.y * rotationSpeed, Space.Self); 
+            tacticalCamera.transform.Rotate(Vector3.up, delta.x * yawRotationSpeed, Space.World);
         }
         else if (!isActionMode)
         {
-            // Возвращаем курсор в нормальное состояние, если мы не в режиме действия
             Cursor.lockState = CursorLockMode.None;
             Cursor.visible = true;
         }
 
+        // --- 3) Zoom колёсиком (меняем высоту Y в пределах min/max) ---
+        if (enableZoom && Mouse.current != null)
+        {
+            // В новой системе ввода скролл приходит как Vector2, интересует Y
+            float scroll = Mouse.current.scroll.ReadValue().y;
+            if (Mathf.Abs(scroll) > 0.01f)
+            {
+                Vector3 p = tacticalCamera.transform.position;
+                // Скролл обычно большой (примерно 120 за щелчок), поэтому нормализуем
+                float scrollSteps = scroll / 120f;
+                p.y -= scrollSteps * zoomSpeed;
+                tacticalCamera.transform.position = p;
+            }
+        }
 
-        // --- 3. Ограничение (Bounding) ---
+        // --- 4) Ограничение (Bounding) ---
 
         // ... (Ваша логика ограничения по gridBounds, minCameraHeight и maxCameraHeight)
         Vector3 pos = tacticalCamera.transform.position;

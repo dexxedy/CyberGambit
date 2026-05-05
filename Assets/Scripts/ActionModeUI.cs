@@ -36,6 +36,11 @@ public class ActionModeUI : MonoBehaviour
     [SerializeField] private TextMeshProUGUI healthText; // Текст HP
     [SerializeField] private GameObject integrityPanel; // Панель со счетчиком оставшейся дистанции
     [SerializeField] private TextMeshProUGUI integrityText; // Текст метров
+
+    [Header("Weapon / Ammo")]
+    [SerializeField] private GameObject ammoPanel; // Панель с патронами (только для юнита с оружием)
+    [SerializeField] private TextMeshProUGUI ammoText; // Например: "23/30 | 90"
+    [SerializeField] private TextMeshProUGUI reloadText; // Например: "RELOADING..."
     
     [Header("HUD Container")]
     [SerializeField] private GameObject actionHUDContainer; // Родительский GameObject для всего HUD экшен-режима
@@ -71,6 +76,22 @@ public class ActionModeUI : MonoBehaviour
         
         // Скрываем панели статистики по умолчанию
         HideStatsPanels();
+
+        if (ammoPanel != null)
+            ammoPanel.SetActive(false);
+
+        AutoBindStatsTextsIfMissing();
+    }
+
+    private void AutoBindStatsTextsIfMissing()
+    {
+        // Удобный фоллбек: если забыли назначить ссылки в Inspector, пробуем найти их в дочерних объектах.
+        if (healthText == null && healthPanel != null)
+            healthText = healthPanel.GetComponentInChildren<TextMeshProUGUI>(true);
+        if (integrityText == null && integrityPanel != null)
+            integrityText = integrityPanel.GetComponentInChildren<TextMeshProUGUI>(true);
+        if (timerText == null && timerPanel != null)
+            timerText = timerPanel.GetComponentInChildren<TextMeshProUGUI>(true);
     }
     
     void Update()
@@ -336,6 +357,14 @@ public class ActionModeUI : MonoBehaviour
     private void UpdateStats()
     {
         Unit controlledUnit = CameraManager.Instance.GetCurrentControlledUnit();
+
+        // На всякий случай (если панели/тексты подменили на сцене)
+        if ((healthText == null && healthPanel != null) ||
+            (integrityText == null && integrityPanel != null) ||
+            (timerText == null && timerPanel != null))
+        {
+            AutoBindStatsTextsIfMissing();
+        }
         
         // Обновляем таймер
         if (timerText != null && CameraManager.Instance != null)
@@ -355,6 +384,34 @@ public class ActionModeUI : MonoBehaviour
         {
             integrityText.text = $"Дистанция: {controlledUnit.GetRemainingMoveMeters():F1} м";
         }
+
+        UpdateAmmoPanel(controlledUnit);
+    }
+
+    private void UpdateAmmoPanel(Unit controlledUnit)
+    {
+        if (ammoPanel == null) return;
+
+        Weapon w = controlledUnit != null ? controlledUnit.GetEquippedWeapon() : null;
+        bool show = w != null && w.Config != null;
+        if (!show)
+        {
+            if (ammoPanel.activeSelf) ammoPanel.SetActive(false);
+            return;
+        }
+
+        if (!ammoPanel.activeSelf) ammoPanel.SetActive(true);
+
+        if (ammoText != null)
+        {
+            int magSize = w.MagazineSize;
+            ammoText.text = $"{w.AmmoInMag}/{magSize} | {w.AmmoReserve}";
+        }
+
+        if (reloadText != null)
+        {
+            reloadText.gameObject.SetActive(w.IsReloading);
+        }
     }
     
     /// <summary>
@@ -365,6 +422,7 @@ public class ActionModeUI : MonoBehaviour
         if (timerPanel != null) timerPanel.SetActive(true);
         if (healthPanel != null) healthPanel.SetActive(true);
         if (integrityPanel != null) integrityPanel.SetActive(true);
+        // ammoPanel включается динамически в UpdateStats() только если у юнита есть оружие
     }
     
     /// <summary>
@@ -375,6 +433,7 @@ public class ActionModeUI : MonoBehaviour
         if (timerPanel != null) timerPanel.SetActive(false);
         if (healthPanel != null) healthPanel.SetActive(false);
         if (integrityPanel != null) integrityPanel.SetActive(false);
+        if (ammoPanel != null) ammoPanel.SetActive(false);
     }
     
     /// <summary>

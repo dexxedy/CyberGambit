@@ -704,6 +704,11 @@ MonoBehaviour:
   takeDamageSound: {fileID: 8300000, guid: 1500a59580468ea498dd4af0dad4b92d, type: 3}
   unitDeathSound: {fileID: 8300000, guid: d5d1168b7f6e63d4dbe1df69b73e27c4, type: 3}
   unitAudioSource: {fileID: 0}
+  unitDisplayNameOverride: Pawn
+  tacticalPortrait: {fileID: 928045715, guid: 86e340573eaae3c4aa94d548714f535c, type: 3}
+  startingWeaponPrefab: {fileID: 0}
+  weaponSocket: {fileID: 0}
+  equippedWeapon: {fileID: 0}
   attackStateName: attack
   attackDamageStartTime: 0.3
   attackDamageEndTime: 0.5

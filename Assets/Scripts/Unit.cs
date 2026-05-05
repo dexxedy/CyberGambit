@@ -58,11 +58,22 @@ public class Unit : MonoBehaviour
     [Header("Audio Source (Optional)")]
     [SerializeField] private AudioSource unitAudioSource; // Можно назначить вручную в Inspector, или создастся автоматически
     
+    [Header("Tactical icon card (BF-style)")]
+    [SerializeField] private string unitDisplayNameOverride;
+    [SerializeField] private Sprite tacticalPortrait;
+
+    [Header("Equipped Weapon (Prefab)")]
+    [Tooltip("Если задано — юнит инстанцирует это оружие в Start() и будет стрелять им по ЛКМ.")]
+    [SerializeField] private Weapon startingWeaponPrefab;
+    [Tooltip("Куда прикреплять оружие (кость руки/пустышка). Если null — к корню юнита.")]
+    [SerializeField] private Transform weaponSocket;
+    [SerializeField] private Weapon equippedWeapon;
+
     [Header("Attack Settings")]
     [SerializeField] private string attackStateName = "attack"; // Имя состояния атаки в Animator
     [SerializeField] private float attackDamageStartTime = 0.2f; // Нормализованное время начала нанесения урона (0-1)
     [SerializeField] private float attackDamageEndTime = 0.8f; // Нормализованное время конца нанесения урона (0-1)
-    
+
     [Header("Ability Effects")]
     private bool hasReflectionActive = false;        // Слон - отражение урона
     private bool hasDamageReduction = false;         // Ладья - снижение урона на 50%
@@ -101,14 +112,32 @@ public class Unit : MonoBehaviour
         
         // Инициализируем AudioSource для звуков юнита
         InitializeAudioSources();
+
+        if (startingWeaponPrefab != null)
+        {
+            EquipWeaponPrefab(startingWeaponPrefab);
+        }
     }
     
     void Awake()
     {
         // Инициализируем AudioSource в Awake, чтобы он был готов до Start
         InitializeAudioSources();
+        if (GetComponent<TacticalUnitPresentation>() == null)
+            gameObject.AddComponent<TacticalUnitPresentation>();
+
+        // Auto-bind camera attach point if not set (prevents runtime exceptions).
+        if (cameraAttachPoint == null)
+        {
+            // Common child names used for FPS camera pivots.
+            Transform t = transform.Find("CameraAttachPoint");
+            if (t == null) t = transform.Find("cameraAttachPoint");
+            if (t == null) t = transform.Find("CameraPivot");
+            if (t == null) t = transform.Find("CameraPivotPoint");
+            cameraAttachPoint = t;
+        }
     }
-    
+
     void OnEnable()
     {
         // Убеждаемся, что AudioSource инициализирован при активации объекта
@@ -221,10 +250,23 @@ public class Unit : MonoBehaviour
         float mouseY = lookInput.y * mouseSensitivity;
         xRotation -= mouseY;
         xRotation = Mathf.Clamp(xRotation, -maxVerticalAngle, maxVerticalAngle);
-        cameraAttachPoint.localRotation = Quaternion.Euler(xRotation, 0f, 0f);
+        if (cameraAttachPoint != null)
+        {
+            cameraAttachPoint.localRotation = Quaternion.Euler(xRotation, 0f, 0f);
+        }
 
         float mouseX = lookInput.x * mouseSensitivity;
         transform.Rotate(Vector3.up * mouseX);
+
+        // Перезарядка оружия по R должна работать даже без выстрела.
+        if (equippedWeapon != null && equippedWeapon.Config != null)
+        {
+            equippedWeapon.TickReload();
+            if (Keyboard.current != null && Keyboard.current.rKey.wasPressedThisFrame)
+            {
+                equippedWeapon.TryStartReload();
+            }
+        }
 
         if (fireInput)
         {
@@ -251,6 +293,12 @@ public class Unit : MonoBehaviour
     /// </summary>
     public void Attack()
     {
+        if (equippedWeapon != null && equippedWeapon.Config != null)
+        {
+            PerformEquippedWeaponFire();
+            return;
+        }
+
         if (animator != null)
         {
             // Запускаем триггер анимации
@@ -264,7 +312,57 @@ public class Unit : MonoBehaviour
             }
         }
     }
-    
+
+    private void PerformEquippedWeaponFire()
+    {
+        Camera actionCam = CameraManager.Instance != null ? CameraManager.Instance.GetActionCamera() : null;
+        Vector3 origin;
+        Vector3 direction;
+
+        if (actionCam != null)
+        {
+            origin = equippedWeapon.Muzzle != null ? equippedWeapon.Muzzle.position : actionCam.transform.position;
+            direction = actionCam.transform.forward;
+        }
+        else
+        {
+            origin = equippedWeapon.Muzzle != null ? equippedWeapon.Muzzle.position : (transform.position + Vector3.up * 1.2f);
+            direction = transform.forward;
+        }
+
+        equippedWeapon.TryFire(this, origin, direction);
+    }
+
+    public void EquipWeapon(Weapon weaponInstance)
+    {
+        if (equippedWeapon != null)
+        {
+            Destroy(equippedWeapon.gameObject);
+            equippedWeapon = null;
+        }
+
+        equippedWeapon = weaponInstance;
+        if (equippedWeapon == null) return;
+
+        Transform parent = weaponSocket != null ? weaponSocket : transform;
+        equippedWeapon.transform.SetParent(parent, worldPositionStays: false);
+        equippedWeapon.transform.localPosition = Vector3.zero;
+        equippedWeapon.transform.localRotation = Quaternion.identity;
+        equippedWeapon.InitializeFromConfigIfNeeded();
+    }
+
+    public void EquipWeaponPrefab(Weapon weaponPrefab)
+    {
+        if (weaponPrefab == null) return;
+        Weapon instance = Instantiate(weaponPrefab);
+        EquipWeapon(instance);
+    }
+
+    public Weapon GetEquippedWeapon()
+    {
+        return equippedWeapon;
+    }
+
     /// <summary>
     /// Проверяет, атакует ли юнит в данный момент, проверяя состояние аниматора
     /// </summary>
@@ -432,29 +530,34 @@ public class Unit : MonoBehaviour
     
     private void HandleMovementSteps()
     {
-        if (ChessGrid.Instance == null) return;
-        
-        SetCurrentGridPosition(ChessGrid.Instance.WorldToGridCoords(transform.position));
-        if (currentGridPosition != lastCheckedGridPosition)
+        if (ChessGrid.Instance != null)
         {
-            hasMovedAtLeastOnce = true;
-            lastCheckedGridPosition = currentGridPosition;
-            lastCheckedCellWorldPosition = ChessGrid.Instance.GridToWorldPosition(currentGridPosition.x, currentGridPosition.y);
-            if (GridHighlighter.Instance != null)
+            SetCurrentGridPosition(ChessGrid.Instance.WorldToGridCoords(transform.position));
+            if (currentGridPosition != lastCheckedGridPosition)
             {
-                GridHighlighter.Instance.ShowAllowedMoves(this);
+                hasMovedAtLeastOnce = true;
+                lastCheckedGridPosition = currentGridPosition;
+                lastCheckedCellWorldPosition = ChessGrid.Instance.GridToWorldPosition(currentGridPosition.x, currentGridPosition.y);
+                if (GridHighlighter.Instance != null)
+                {
+                    GridHighlighter.Instance.ShowAllowedMoves(this);
+                }
             }
         }
-        
-        if (remainingMoveMeters <= MinMoveBudgetEpsilon &&
-            CameraManager.Instance != null &&
-            CameraManager.Instance.IsActionMode() &&
-            CameraManager.Instance.GetCurrentControlledUnit() == this)
-        {
-            remainingMoveMeters = 0f;
-            remainingSteps = 0;
-            CameraManager.Instance.SwitchToTacticalMode();
-        }
+
+        TryEndActionTurnWhenMoveBudgetEmpty();
+    }
+
+    /// <summary>Срабатывает и без ChessGrid (уровень только по NavMesh).</summary>
+    private void TryEndActionTurnWhenMoveBudgetEmpty()
+    {
+        if (remainingMoveMeters > MinMoveBudgetEpsilon) return;
+        if (CameraManager.Instance == null || !CameraManager.Instance.IsActionMode()) return;
+        if (CameraManager.Instance.GetCurrentControlledUnit() != this) return;
+
+        remainingMoveMeters = 0f;
+        remainingSteps = 0;
+        CameraManager.Instance.SwitchToTacticalMode();
     }
     
     private void SnapToCellWorldPosition(Vector3 worldPos)
@@ -551,6 +654,17 @@ public class Unit : MonoBehaviour
     public int GetMaxHealth()
     {
         return maxHealth;
+    }
+
+    /// <summary>Пустая строка = использовать дефолт по типу фигуры на UI.</summary>
+    public string GetUnitDisplayName()
+    {
+        return unitDisplayNameOverride ?? string.Empty;
+    }
+
+    public Sprite GetTacticalPortrait()
+    {
+        return tacticalPortrait;
     }
     
     public float GetRuleIntegrityPoints()

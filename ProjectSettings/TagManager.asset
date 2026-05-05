@@ -5,6 +5,7 @@ TagManager:
   serializedVersion: 3
   tags:
   - Unit
+  - Flag
   layers:
   - Default
   - TransparentFX
@@ -12,8 +13,8 @@ TagManager:
   - Units
   - Water
   - UI
-  - 
-  - 
+  - Walls
+  - Floor
   - 
   - 
   - 

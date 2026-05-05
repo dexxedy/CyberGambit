@@ -40,10 +40,16 @@ public class TacticalModeUI : MonoBehaviour
     [Header("Settings")]
     [SerializeField] private float raycastDistance = 100f; // Дистанция raycast
     [SerializeField] private LayerMask unitLayer; // Слой юнитов
+
+    [Header("Icon Hover Delay")]
+    [SerializeField] private float iconHoverDelaySeconds = 0.5f;
     
     private Unit currentHoveredUnit = null;
     private Camera tacticalCamera;
     private bool hasShownInstructions = false; // Флаг, показывали ли уже инструкции
+
+    private Coroutine iconHoverCoroutine;
+    private Unit pendingIconHoverUnit;
     
     void Awake()
     {
@@ -105,47 +111,51 @@ public class TacticalModeUI : MonoBehaviour
         }
         
         if (tacticalCamera == null || unitInfoPanel == null) return;
-        
-        // Raycast из позиции мыши
-        Vector2 mousePosition = Mouse.current.position.ReadValue();
-        Ray ray = tacticalCamera.ScreenPointToRay(mousePosition);
-        RaycastHit hit;
-        
+
         Unit hoveredUnit = null;
-        
-        if (Physics.Raycast(ray, out hit, raycastDistance, unitLayer))
+
+        if (TacticalWorldIconsController.Instance != null)
         {
-            hoveredUnit = hit.collider.GetComponentInParent<Unit>();
-            if (hoveredUnit == null)
+            hoveredUnit = TacticalWorldIconsController.Instance.GetHoveredIconUnit();
+        }
+
+        if (hoveredUnit == null && TacticalWorldIconsController.Instance == null)
+        {
+            Vector2 mousePosition = Mouse.current.position.ReadValue();
+            Ray ray = tacticalCamera.ScreenPointToRay(mousePosition);
+            if (Physics.Raycast(ray, out RaycastHit hit, raycastDistance, unitLayer))
             {
-                hoveredUnit = hit.collider.GetComponent<Unit>();
+                hoveredUnit = hit.collider.GetComponentInParent<Unit>();
+                if (hoveredUnit == null)
+                    hoveredUnit = hit.collider.GetComponent<Unit>();
             }
         }
         
-        // Если нашли юнит, показываем информацию
+        // В режиме BF-иконок: показ панели управляется через PointerEnter/Exit с задержкой.
+        // Здесь только обновляем содержимое, если панель уже показана.
+        if (TacticalWorldIconsController.Instance != null)
+        {
+            if (currentHoveredUnit != null && unitInfoPanel.activeSelf)
+                UpdateInfoDisplay(currentHoveredUnit);
+            return;
+        }
+
+        // Без BF-иконок: классическое поведение по raycast — показываем сразу.
         if (hoveredUnit != null)
         {
             if (currentHoveredUnit != hoveredUnit)
-            {
                 currentHoveredUnit = hoveredUnit;
-            }
-            
+
             if (!unitInfoPanel.activeSelf)
-            {
                 unitInfoPanel.SetActive(true);
-            }
-            
+
             UpdateInfoDisplay(hoveredUnit);
+            return;
         }
-        else
-        {
-            // Нет юнита под курсором - скрываем панель
-            if (unitInfoPanel.activeSelf)
-            {
-                unitInfoPanel.SetActive(false);
-            }
-            currentHoveredUnit = null;
-        }
+
+        if (unitInfoPanel.activeSelf)
+            unitInfoPanel.SetActive(false);
+        currentHoveredUnit = null;
     }
     
     /// <summary>
@@ -158,7 +168,8 @@ public class TacticalModeUI : MonoBehaviour
         // Имя юнита
         if (unitNameText != null)
         {
-            unitNameText.text = GetUnitDisplayName(unit.chessType);
+            string custom = unit.GetUnitDisplayName();
+            unitNameText.text = string.IsNullOrEmpty(custom) ? GetUnitDisplayName(unit.chessType) : custom;
         }
         
         // Владелец
@@ -331,8 +342,8 @@ public class TacticalModeUI : MonoBehaviour
             string introText = "ЦЕЛЬ ИГРЫ:\n\n" +
                                "Уничтожьте короля противника, не дав ему сделать то же самое с вашим королем.\n\n" +
                                "КАК ИГРАТЬ:\n\n" +
-                               "• Кликните на своего юнита, чтобы выбрать его\n" +
-                               "• Вы перейдете в режим от первого лица\n" +
+                               "• В тактике кликните по карточке-иконке своего юнита на экране\n" +
+                               "• Вы перейдёте в режим от первого лица\n" +
                                "• Управляйте юнитом и атакуйте врагов\n\n";
             
             if (gameMode == GameMode.PlayerVsBot)
@@ -409,6 +420,58 @@ public class TacticalModeUI : MonoBehaviour
         }
     }
     
+    /// <summary>Подсказка при наведении на BF-иконку в тактике.</summary>
+    public void ShowUnitTooltipFromIcon(Unit unit)
+    {
+        if (unit == null || unitInfoPanel == null) return;
+
+        pendingIconHoverUnit = unit;
+
+        if (iconHoverCoroutine != null)
+        {
+            StopCoroutine(iconHoverCoroutine);
+            iconHoverCoroutine = null;
+        }
+
+        iconHoverCoroutine = StartCoroutine(ShowIconTooltipDelayed(unit));
+    }
+
+    /// <summary>Скрыть подсказку, если она была от этой иконки.</summary>
+    public void ClearIconTooltipIf(Unit unit)
+    {
+        if (pendingIconHoverUnit == unit)
+        {
+            pendingIconHoverUnit = null;
+            if (iconHoverCoroutine != null)
+            {
+                StopCoroutine(iconHoverCoroutine);
+                iconHoverCoroutine = null;
+            }
+        }
+
+        if (unit != null && currentHoveredUnit == unit)
+        {
+            currentHoveredUnit = null;
+            if (unitInfoPanel != null)
+                unitInfoPanel.SetActive(false);
+        }
+    }
+
+    private IEnumerator ShowIconTooltipDelayed(Unit unit)
+    {
+        float d = Mathf.Max(0f, iconHoverDelaySeconds);
+        if (d > 0f)
+            yield return new WaitForSeconds(d);
+
+        // За время ожидания курсор мог уйти или режим мог смениться.
+        if (pendingIconHoverUnit != unit) yield break;
+        if (CameraManager.Instance != null && CameraManager.Instance.IsActionMode()) yield break;
+
+        currentHoveredUnit = unit;
+        unitInfoPanel.SetActive(true);
+        UpdateInfoDisplay(unit);
+    }
+
     /// <summary>
     /// Показывает HUD тактического режима (вызывается при возобновлении игры)
     /// </summary>

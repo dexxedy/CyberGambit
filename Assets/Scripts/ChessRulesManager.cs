@@ -43,28 +43,17 @@ public class ChessRulesManager : MonoBehaviour
 
     private void InitializeBoard()
     {
-        if (ChessGrid.Instance == null)
-        {
-            Debug.LogError("Отсутствует ChessGrid на сцене! Невозможно инициализировать доску.");
-            return;
-        }
-
-        // 1. Находим всех юнитов, которые были расставлены вручную в редакторе
-        // Используем FindObjectsByType вместо устаревшего FindObjectsOfType
         Unit[] foundUnits = FindObjectsByType<Unit>(FindObjectsSortMode.None);
 
         foreach (var unit in foundUnits)
         {
-            if (snapUnitsToGridOnStart)
+            if (snapUnitsToGridOnStart && ChessGrid.Instance != null)
             {
-                // Юнит сам вычисляет ближайшую клетку и "примагничивается" к ней
                 unit.SnapToGrid();
             }
-            
-            // 3. Добавляем юнита в список менеджера для дальнейшего учета
+
             allUnits.Add(unit);
         }
-
     }
 
     /**

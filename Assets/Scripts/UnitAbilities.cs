@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.AI;
 using UnityEngine.InputSystem;
 using System.Collections.Generic;
 
@@ -93,47 +94,47 @@ public class UnitAbilities : MonoBehaviour
         
         // Направление взгляда (forward камеры)
         Vector3 lookDirection = actionCamera.transform.forward;
-        lookDirection.y = 0; // Игнорируем вертикальную составляющую
+        lookDirection.y = 0;
         lookDirection.Normalize();
-        
-        // Получаем текущую позицию коня
-        Vector2Int currentPos = ChessGrid.Instance.WorldToGridCoords(unit.transform.position);
-        
-        // Получаем все возможные ходы коня
-        List<Vector2Int> possibleMoves = ChessRulesManager.Instance.GetHorsePossibleMoves(currentPos);
-        
-        if (possibleMoves.Count == 0)
+
+        bool jumped = false;
+
+        if (ChessGrid.Instance != null && ChessRulesManager.Instance != null)
         {
-            return;
-        }
-        
-        // Находим ближайшую валидную клетку в направлении взгляда
-        Vector2Int bestTarget = currentPos;
-        float bestDot = -1f; // Косинус угла между направлением взгляда и направлением к клетке
-        
-        foreach (Vector2Int targetPos in possibleMoves)
-        {
-            Vector3 targetWorldPos = ChessGrid.Instance.GridToWorldPosition(targetPos.x, targetPos.y);
-            Vector3 directionToTarget = (targetWorldPos - unit.transform.position);
-            directionToTarget.y = 0;
-            directionToTarget.Normalize();
-            
-            // Вычисляем косинус угла (чем ближе к 1, тем ближе к направлению взгляда)
-            float dot = Vector3.Dot(lookDirection, directionToTarget);
-            
-            if (dot > bestDot)
+            Vector2Int currentPos = ChessGrid.Instance.WorldToGridCoords(unit.transform.position);
+            List<Vector2Int> possibleMoves = ChessRulesManager.Instance.GetHorsePossibleMoves(currentPos);
+            if (possibleMoves.Count == 0) return;
+
+            Vector2Int bestTarget = currentPos;
+            float bestDot = -1f;
+
+            foreach (Vector2Int targetPos in possibleMoves)
             {
-                bestDot = dot;
-                bestTarget = targetPos;
+                Vector3 targetWorldPos = ChessGrid.Instance.GridToWorldPosition(targetPos.x, targetPos.y);
+                Vector3 directionToTarget = (targetWorldPos - unit.transform.position);
+                directionToTarget.y = 0;
+                directionToTarget.Normalize();
+
+                float dot = Vector3.Dot(lookDirection, directionToTarget);
+                if (dot > bestDot)
+                {
+                    bestDot = dot;
+                    bestTarget = targetPos;
+                }
             }
+
+            Vector3 targetWorldPosFinal = ChessGrid.Instance.GridToWorldPosition(bestTarget.x, bestTarget.y);
+            unit.transform.position = targetWorldPosFinal;
+            unit.SnapToGrid();
+            jumped = true;
         }
-        
-        // Телепортируемся на выбранную клетку
-        Vector3 targetWorldPosFinal = ChessGrid.Instance.GridToWorldPosition(bestTarget.x, bestTarget.y);
-        unit.transform.position = targetWorldPosFinal;
-        unit.SnapToGrid();
-        
-        // Устанавливаем КД
+        else
+        {
+            jumped = TryHorseJumpNavMesh(lookDirection);
+        }
+
+        if (!jumped) return;
+
         cooldownHorseJump = 1;
         
         // Воспроизводим визуальный эффект и звук
@@ -142,6 +143,64 @@ public class UnitAbilities : MonoBehaviour
         {
             visualEffects.PlayHorseJumpEffect();
         }
+    }
+
+    /// <summary>Восьмиугольник «коня» в мире без шахматной сетки — привязка к NavMesh.</summary>
+    private bool TryHorseJumpNavMesh(Vector3 lookDirection)
+    {
+        float scale = 2.5f;
+        Vector3 right = Vector3.Cross(Vector3.up, lookDirection).normalized;
+        Vector3 forward = lookDirection;
+
+        Vector3[] deltas = new Vector3[]
+        {
+            forward * (2f * scale) + right * scale,
+            forward * (2f * scale) - right * scale,
+            forward * (-2f * scale) + right * scale,
+            forward * (-2f * scale) - right * scale,
+            forward * scale + right * (2f * scale),
+            forward * scale - right * (2f * scale),
+            forward * (-scale) + right * (2f * scale),
+            forward * (-scale) - right * (2f * scale),
+        };
+
+        Vector3 best = unit.transform.position;
+        float bestDot = -2f;
+        float sampleRadius = scale * 3f;
+
+        foreach (Vector3 delta in deltas)
+        {
+            Vector3 candidate = unit.transform.position + delta;
+            if (NavMesh.SamplePosition(candidate, out NavMeshHit hit, sampleRadius, NavMesh.AllAreas))
+            {
+                Vector3 dir = hit.position - unit.transform.position;
+                dir.y = 0f;
+                if (dir.sqrMagnitude < 0.05f) continue;
+                dir.Normalize();
+                float dot = Vector3.Dot(lookDirection, dir);
+                if (dot > bestDot)
+                {
+                    bestDot = dot;
+                    best = hit.position;
+                }
+            }
+        }
+
+        if (bestDot < -1f) return false;
+
+        CharacterController cc = unit.GetComponent<CharacterController>();
+        if (cc != null)
+        {
+            cc.enabled = false;
+            unit.transform.position = best;
+            cc.enabled = true;
+        }
+        else
+        {
+            unit.transform.position = best;
+        }
+
+        return true;
     }
     
     // ========== СЛОН: Отражение урона (КД: 3 хода) ==========
