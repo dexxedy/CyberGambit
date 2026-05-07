@@ -590,6 +590,26 @@ public class Unit : MonoBehaviour
         }
     }
 
+    /// <summary>
+    /// Внешний контроль анимации движения (когда юнит двигается корутинами бота, не через input).
+    /// </summary>
+    public void SetExternalMoveAnimation(bool moving)
+    {
+        if (animator == null) return;
+        animator.SetFloat("Speed", moving ? 1f : 0f);
+
+        if (moving && baseMoveSpeed > 0f)
+        {
+            float animationSpeedMultiplier = moveSpeed / baseMoveSpeed;
+            animationSpeedMultiplier = Mathf.Clamp(animationSpeedMultiplier, minAnimationSpeed, maxAnimationSpeed);
+            animator.speed = animationSpeedMultiplier;
+        }
+        else if (!moving)
+        {
+            animator.speed = 1.0f;
+        }
+    }
+
     // Unit.cs
 
     public void SetControlled(bool controlled)

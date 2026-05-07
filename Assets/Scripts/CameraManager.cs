@@ -2,6 +2,7 @@ using UnityEngine;
 using UnityEngine.InputSystem;
 using TMPro; // Для TextMeshProUGUI (таймер)
 using System.Collections;
+using System.Collections.Generic;
 using Mission2;
 
 public class CameraManager : MonoBehaviour
@@ -34,6 +35,11 @@ public class CameraManager : MonoBehaviour
     [Header("Tactical Zoom (Mouse Wheel)")]
     [SerializeField] private bool enableZoom = true;
     [SerializeField] private float zoomSpeed = 2.0f;
+
+    [Header("Tactical — переключение между своими юнитами")]
+    [Tooltip("В тактике, на ходу человека: переносит камеру над следующим своим юнитом (по кругу).")]
+    [SerializeField] private bool enableCycleFriendlyUnitsInTactical = true;
+    [SerializeField] private Key cycleFriendlyUnitsKey = Key.Tab;
     [SerializeField] private TextMeshProUGUI turnText;
     [SerializeField] private GameObject turnPanel; // Панель с текстом хода
     
@@ -45,6 +51,7 @@ public class CameraManager : MonoBehaviour
     private bool isTimerPaused = false; // Флаг паузы таймера (для QTE)
     private bool isFollowingBotUnit = false; // Флаг следования камеры за юнитом бота
     private bool isReturningCamera = false; // Флаг возврата камеры на исходную позицию
+    private Unit followedBotUnit; // Какой бот-юнит сейчас "в кадре"
     private Vector3 savedTacticalPosition; // Сохраненная позиция тактической камеры
     private Quaternion savedTacticalRotation; // Сохраненная ротация тактической камеры
     private Coroutine followBotUnitCoroutine; // Корутина следования за юнитом бота
@@ -60,8 +67,14 @@ public class CameraManager : MonoBehaviour
     private Unit lastPlayedUnitPlayer2;
 
     [Header("Bot Turn Presentation")]
-    [Tooltip("Если включено — камера НЕ следует за ботом; бот показывается подсказками/траекториями.")]
+    [Tooltip("Если включено — камера НЕ следует за ботом. Если выключено — камера может следовать (кино-показ).")]
     [SerializeField] private bool disableBotFollowCamera = true;
+    
+    [Tooltip("Если включено — камера мгновенно снэпается к боту (без плавного подлёта).")]
+    [SerializeField] private bool snapBotFollowCameraInstantly = true;
+
+    [Tooltip("Если включено — во время кино-показа хода бота показываем 3D-модели: все юниты игрока + всех spotted-врагов.")]
+    [SerializeField] private bool showKnownUnitsBodiesDuringBotCinematic = true;
 
     [Tooltip("Если включено — в PvBot тактическая камера НЕ сбрасывается в фиксированную позицию при смене хода.")]
     [SerializeField] private bool preserveTacticalCameraInPvBot = true;
@@ -119,6 +132,13 @@ public class CameraManager : MonoBehaviour
         }
         if (isActionMode)
         {
+            // PvBot spotting: в экшене игрок "разведывает" врагов (LOS/FOV) -> миникарта/показ хода бота.
+            if (EnemyIntelTracker.Instance != null && GameManager.Instance != null &&
+                GameManager.Instance.GetGameMode() == GameMode.PlayerVsBot && currentUnit != null && actionCamera != null)
+            {
+                EnemyIntelTracker.Instance.UpdateSpottingFromAction(currentUnit, actionCamera);
+            }
+
             // Обновление статистики теперь происходит в ActionModeUI.Update()
 
             if (Keyboard.current.backquoteKey.wasPressedThisFrame)
@@ -146,35 +166,9 @@ public class CameraManager : MonoBehaviour
             {
                 // Тактика: полёт камеры (WASD). Выбор своего юнита — через UI-иконки (TacticalWorldIconsController).
                 HandleTacticalCameraMovement();
+                TryCycleTacticalCameraToNextFriendlyUnit();
             }
         }
-    }
-
-    private bool IsFirstStepForwardImpossible(Unit unit)
-    {
-        if (unit == null || ChessGrid.Instance == null) return false;
-
-        Vector2Int pos = ChessGrid.Instance.WorldToGridCoords(unit.transform.position);
-        Vector2Int forward = GameManager.Instance != null
-            ? GameManager.Instance.GetForwardDirection(unit.owner)
-            : (unit.owner == Player.Player1 ? new Vector2Int(0, 1) : new Vector2Int(0, -1));
-        Vector2Int frontPos = pos + forward;
-
-        // Если впереди край доски — шага вперед нет
-        if (!ChessGrid.Instance.IsValidCoord(frontPos.x, frontPos.y)) return true;
-
-        Unit[] allUnits = FindObjectsByType<Unit>(FindObjectsSortMode.None);
-        foreach (var u in allUnits)
-        {
-            if (u == null || u == unit) continue;
-            if (u.GetHealth() <= 0) continue;
-
-            Vector2Int uPos = ChessGrid.Instance.WorldToGridCoords(u.transform.position);
-            // Если любая фигура стоит впереди — шаг вперед невозможен
-            if (uPos == frontPos) return true;
-        }
-
-        return false;
     }
 
     private void SwitchToActionMode(Unit unit)
@@ -355,15 +349,10 @@ public class CameraManager : MonoBehaviour
     public void TrySwitchToActionModeFromMap(Unit unit)
     {
         if (unit == null || GameManager.Instance == null) return;
+        if (GameManager.Instance.IsArmyDeploymentPhase()) return;
         if (isActionMode) return;
         if (unit.owner != GameManager.Instance.currentPlayer) return;
         if (GameManager.Instance.IsBotTurn()) return;
-
-        if (GameManager.Instance.IsFirstTurnForPlayer(GameManager.Instance.currentPlayer) &&
-            IsFirstStepForwardImpossible(unit))
-        {
-            return;
-        }
 
         if (AudioManager.Instance != null)
             AudioManager.Instance.PlayUnitSelect();
@@ -374,6 +363,24 @@ public class CameraManager : MonoBehaviour
         SwitchToActionMode(unit);
     }
 
+    /// <summary>
+    /// Сохраняет высоту и поворот тактической камеры, переносит X/Z над указанным юнитом (как при центрировании на последнем ходе).
+    /// </summary>
+    private void SnapTacticalCameraAboveUnit(Unit u)
+    {
+        if (u == null || tacticalCamera == null) return;
+        if (u.GetHealth() <= 0) return;
+
+        Vector3 p = tacticalCamera.transform.position;
+        Vector3 up = Vector3.up * Mathf.Max(0f, centerOnUnitWorldOffsetY);
+        p.x = u.transform.position.x + up.x;
+        p.z = u.transform.position.z + up.z;
+        p.y = Mathf.Clamp(p.y, minCameraHeight, maxCameraHeight);
+        p.x = Mathf.Clamp(p.x, minArenaX, maxArenaX);
+        p.z = Mathf.Clamp(p.z, minArenaZ, maxArenaZ);
+        tacticalCamera.transform.position = p;
+    }
+
     private void SetTacticalCameraPosition(Player player)
     {
         if (centerTacticalCameraOnLastPlayedUnit)
@@ -381,14 +388,7 @@ public class CameraManager : MonoBehaviour
             Unit u = (player == Player.Player1) ? lastPlayedUnitPlayer1 : lastPlayedUnitPlayer2;
             if (u != null && u.GetHealth() > 0 && tacticalCamera != null)
             {
-                Vector3 p = tacticalCamera.transform.position;
-                Vector3 up = Vector3.up * Mathf.Max(0f, centerOnUnitWorldOffsetY);
-                p.x = u.transform.position.x + up.x;
-                p.z = u.transform.position.z + up.z;
-                p.y = Mathf.Clamp(p.y, minCameraHeight, maxCameraHeight);
-                p.x = Mathf.Clamp(p.x, minArenaX, maxArenaX);
-                p.z = Mathf.Clamp(p.z, minArenaZ, maxArenaZ);
-                tacticalCamera.transform.position = p;
+                SnapTacticalCameraAboveUnit(u);
 
                 // Keep current rotation (player can yaw/zoom). If you prefer fixed, uncomment:
                 // tacticalCamera.transform.rotation = player == Player.Player1 ? player1TacticalRotation : player2TacticalRotation;
@@ -424,6 +424,64 @@ public class CameraManager : MonoBehaviour
         if (unit.owner == Player.Player1) lastPlayedUnitPlayer1 = unit;
         else lastPlayedUnitPlayer2 = unit;
     }
+
+    /// <summary>
+    /// По нажатию клавиши переносит тактическую камеру над следующим своим живым юнитом.
+    /// Текущая «опорная» точка — юнит в списке, ближайший к камере по XZ (после ручного пана всё ещё можно перейти дальше по кругу).
+    /// </summary>
+    private void TryCycleTacticalCameraToNextFriendlyUnit()
+    {
+        if (!enableCycleFriendlyUnitsInTactical) return;
+        if (tacticalCamera == null || GameManager.Instance == null) return;
+        if (GameManager.Instance.IsPaused()) return;
+        if (GameManager.Instance.IsBotTurn()) return;
+        if (Keyboard.current == null) return;
+        if (!Keyboard.current[cycleFriendlyUnitsKey].wasPressedThisFrame) return;
+
+        Player cp = GameManager.Instance.currentPlayer;
+        Unit[] all = FindObjectsByType<Unit>(FindObjectsSortMode.None);
+        var mine = new List<Unit>();
+        foreach (Unit u in all)
+        {
+            if (u == null) continue;
+            if (u.owner != cp) continue;
+            if (u.GetHealth() <= 0) continue;
+            mine.Add(u);
+        }
+
+        if (mine.Count <= 1) return;
+
+        mine.Sort((a, b) =>
+        {
+            int cmp = a.currentGridPosition.x.CompareTo(b.currentGridPosition.x);
+            if (cmp != 0) return cmp;
+            cmp = a.currentGridPosition.y.CompareTo(b.currentGridPosition.y);
+            if (cmp != 0) return cmp;
+            return string.CompareOrdinal(a.name, b.name);
+        });
+
+        Vector3 cam = tacticalCamera.transform.position;
+        float camX = cam.x;
+        float camZ = cam.z;
+
+        int bestIdx = 0;
+        float bestDist = float.MaxValue;
+        for (int i = 0; i < mine.Count; i++)
+        {
+            Vector3 upos = mine[i].transform.position;
+            float dx = upos.x - camX;
+            float dz = upos.z - camZ;
+            float d = dx * dx + dz * dz;
+            if (d < bestDist || (Mathf.Approximately(d, bestDist) && i < bestIdx))
+            {
+                bestDist = d;
+                bestIdx = i;
+            }
+        }
+
+        int nextIdx = (bestIdx + 1) % mine.Count;
+        SnapTacticalCameraAboveUnit(mine[nextIdx]);
+    }
     
     /// <summary>
     /// Обновляет камеру и UI для текущего игрока (используется ботом)
@@ -435,6 +493,15 @@ public class CameraManager : MonoBehaviour
             // В PvBot камера должна оставаться там, где её оставил игрок.
             if (preserveTacticalCameraInPvBot && GameManager.Instance.GetGameMode() == GameMode.PlayerVsBot)
             {
+                // Если камера следовала за ботом — обязательно отпускаем её при смене хода.
+                if (!GameManager.Instance.IsBotTurn() && isFollowingBotUnit && !isReturningCamera)
+                {
+                    StartCoroutine(ReturnCameraAndSetPosition());
+                    if (turnText != null)
+                        turnText.text = $"Ход: {GameManager.Instance.currentPlayer}";
+                    return;
+                }
+
                 // Но когда ход возвращается игроку, центрируем над последним сыгранным юнитом.
                 if (!GameManager.Instance.IsBotTurn())
                     SetTacticalCameraPosition(GameManager.Instance.currentPlayer);
@@ -504,35 +571,75 @@ public class CameraManager : MonoBehaviour
             savedTacticalPosition = tacticalCamera.transform.position;
             savedTacticalRotation = tacticalCamera.transform.rotation;
         }
+
+        followedBotUnit = botUnit;
         
-        // Вычисляем позицию камеры спереди юнита бота (со стороны игрока)
+        // 3rd-person: камера сзади юнита бота.
         Vector3 unitPosition = botUnit.transform.position;
+
+        Vector3 back = -botUnit.transform.forward;
+        back.y = 0f;
+        if (back.sqrMagnitude < 0.0001f) back = Vector3.back;
+        back.Normalize();
+
+        float height = 2.2f;
+        float distance = 4.5f;
+        Vector3 cameraPosition = unitPosition + Vector3.up * height + back * distance;
+        Vector3 lookAt = unitPosition + Vector3.up * 1.4f;
+        Quaternion cameraRotation = Quaternion.LookRotation((lookAt - cameraPosition).normalized);
         
-        // Определяем направление "спереди" - от юнита бота к стороне игрока (Player1)
-        // Используем направление от юнита бота к сохраненной позиции камеры (которая на стороне Player1)
-        Vector3 directionToPlayer = (savedTacticalPosition - unitPosition).normalized;
-        directionToPlayer.y = 0; // Игнорируем вертикальную составляющую
-        directionToPlayer.Normalize();
-        
-        // Если направление не определено (камера прямо над юнитом), используем направление к центру доски со стороны Player1
-        if (directionToPlayer.magnitude < 0.1f)
+        // На время кино-показа в тактике показываем тела "известных" юнитов (свои + spotted враги).
+        if (showKnownUnitsBodiesDuringBotCinematic)
+            ApplyKnownBodiesVisibilityForCinematic();
+        else
         {
-            // Player1 обычно внизу доски (меньшие Y координаты), направляем камеру вниз
-            directionToPlayer = -Vector3.forward; // Направление к Player1
+            TacticalUnitPresentation pres = botUnit.GetComponent<TacticalUnitPresentation>();
+            if (pres != null)
+                pres.SetBodyVisualVisible(true);
         }
-        
-        // Позиция камеры: над юнитом, спереди (со стороны игрока)
-        Vector3 cameraPosition = unitPosition + Vector3.up * 8f + directionToPlayer * 5f; // Высота 8, отступ спереди 5
-        
-        // Вычисляем ротацию камеры (смотрим на юнит сверху под углом)
-        Vector3 directionToUnit = (unitPosition - cameraPosition).normalized;
-        Quaternion cameraRotation = Quaternion.LookRotation(directionToUnit);
-        
-        // Плавно перемещаем камеру к новой позиции
-        StartCoroutine(MoveCameraToBotUnit(cameraPosition, cameraRotation, botUnit));
+
+        // Мгновенный снэп или плавный подлёт (временно можно включать снэп, чтобы не было дёргано).
+        if (snapBotFollowCameraInstantly)
+        {
+            isFollowingBotUnit = true;
+            tacticalCamera.transform.position = cameraPosition;
+            tacticalCamera.transform.rotation = cameraRotation;
+
+            // Перезапускаем follow-корутину, если она уже шла.
+            if (followBotUnitCoroutine != null)
+            {
+                StopCoroutine(followBotUnitCoroutine);
+                followBotUnitCoroutine = null;
+            }
+            followBotUnitCoroutine = StartCoroutine(FollowBotUnit(botUnit));
+        }
+        else
+        {
+            // Плавно перемещаем камеру к новой позиции
+            StartCoroutine(MoveCameraToBotUnit(cameraPosition, cameraRotation, botUnit));
+        }
     }
 
     public bool IsBotFollowCameraEnabled() => !disableBotFollowCamera;
+    public bool IsFollowingBotUnit() => isFollowingBotUnit;
+    public Unit GetFollowedBotUnit() => followedBotUnit;
+    public bool IsKnownBodiesCinematicEnabled() => showKnownUnitsBodiesDuringBotCinematic;
+
+    public bool ShouldHideTacticalIconDuringCinematic(Unit unit)
+    {
+        if (!isFollowingBotUnit) return false;
+        if (!showKnownUnitsBodiesDuringBotCinematic) return unit != null && unit == followedBotUnit;
+        if (unit == null) return false;
+        if (GameManager.Instance == null || GameManager.Instance.GetGameMode() != GameMode.PlayerVsBot)
+            return unit == followedBotUnit;
+
+        // Если показываем тела "известных" юнитов — иконки им не нужны.
+        if (unit.owner == Player.Player1) return true;
+        if (unit.owner == Player.Player2)
+            return EnemyIntelTracker.Instance != null && EnemyIntelTracker.Instance.IsSpotted(unit);
+
+        return unit == followedBotUnit;
+    }
     
     /// <summary>
     /// Плавно перемещает камеру к позиции над юнитом бота
@@ -575,20 +682,12 @@ public class CameraManager : MonoBehaviour
         {
             // Обновляем позицию камеры спереди юнита бота (со стороны игрока)
             Vector3 unitPosition = botUnit.transform.position;
-            
-            // Определяем направление "спереди" - от юнита бота к стороне игрока
-            Vector3 directionToPlayer = (savedTacticalPosition - unitPosition).normalized;
-            directionToPlayer.y = 0; // Игнорируем вертикальную составляющую
-            directionToPlayer.Normalize();
-            
-            // Если направление не определено, используем направление к Player1
-            if (directionToPlayer.magnitude < 0.1f)
-            {
-                directionToPlayer = -Vector3.forward; // Направление к Player1
-            }
-            
-            // Позиция камеры: над юнитом, спереди (со стороны игрока)
-            Vector3 cameraPosition = unitPosition + Vector3.up * 8f + directionToPlayer * 5f;
+            Vector3 back = -botUnit.transform.forward;
+            back.y = 0f;
+            if (back.sqrMagnitude < 0.0001f) back = Vector3.back;
+            back.Normalize();
+
+            Vector3 cameraPosition = unitPosition + Vector3.up * 2.2f + back * 4.5f;
             
             // Плавно перемещаем камеру к новой позиции
             tacticalCamera.transform.position = Vector3.Lerp(
@@ -598,7 +697,8 @@ public class CameraManager : MonoBehaviour
             );
             
             // Обновляем ротацию камеры (смотрим на юнит)
-            Vector3 directionToUnit = (unitPosition - tacticalCamera.transform.position).normalized;
+            Vector3 lookAt = unitPosition + Vector3.up * 1.4f;
+            Vector3 directionToUnit = (lookAt - tacticalCamera.transform.position).normalized;
             Quaternion targetRotation = Quaternion.LookRotation(directionToUnit);
             tacticalCamera.transform.rotation = Quaternion.Lerp(
                 tacticalCamera.transform.rotation,
@@ -618,6 +718,11 @@ public class CameraManager : MonoBehaviour
         if (!isFollowingBotUnit) return;
         
         isFollowingBotUnit = false;
+        followedBotUnit = null;
+
+        // Возвращаем показ моделей в тактике к глобальному правилу (обычно скрыты).
+        if (TacticalWorldIconsController.Instance != null && TacticalWorldIconsController.Instance.IsConfigured())
+            TacticalUnitPresentation.ApplyGlobal(true);
         
         // Останавливаем корутину следования, если она активна
         if (followBotUnitCoroutine != null)
@@ -634,6 +739,27 @@ public class CameraManager : MonoBehaviour
         
         // Плавно возвращаем камеру на исходную позицию
         returnCameraCoroutine = StartCoroutine(ReturnCameraToOriginalPosition());
+    }
+
+    private void ApplyKnownBodiesVisibilityForCinematic()
+    {
+        // PvBot only: тела игрока (Player1) всегда, враги (Player2) только если spotted.
+        Unit[] all = FindObjectsByType<Unit>(FindObjectsSortMode.None);
+        foreach (Unit u in all)
+        {
+            if (u == null || u.GetHealth() <= 0) continue;
+            TacticalUnitPresentation pres = u.GetComponent<TacticalUnitPresentation>();
+            if (pres == null) continue;
+
+            bool visible = true;
+            if (GameManager.Instance != null && GameManager.Instance.GetGameMode() == GameMode.PlayerVsBot)
+            {
+                if (u.owner == Player.Player2)
+                    visible = EnemyIntelTracker.Instance != null && EnemyIntelTracker.Instance.IsSpotted(u);
+            }
+
+            pres.SetBodyVisualVisible(visible);
+        }
     }
     
     /// <summary>

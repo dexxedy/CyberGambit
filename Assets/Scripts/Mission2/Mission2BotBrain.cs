@@ -84,9 +84,14 @@ public class Mission2BotBrain : MonoBehaviour, IBotMissionBrain
 
         if (CameraManager.Instance != null)
         {
-            CameraManager.Instance.SwitchToBotUnitView(selected);
-            if (CameraManager.Instance.IsBotFollowCameraEnabled())
-                yield return new WaitForSeconds(0.35f);
+            // Кинематографический показ хода бота — только если этот бот-юнит уже "известен" игроку (spotted).
+            bool canShow = EnemyIntelTracker.Instance != null && EnemyIntelTracker.Instance.IsSpotted(selected);
+            if (canShow)
+            {
+                CameraManager.Instance.SwitchToBotUnitView(selected);
+                if (CameraManager.Instance.IsBotFollowCameraEnabled())
+                    yield return new WaitForSeconds(0.35f);
+            }
         }
 
         // If target is in attack range (melee or weapon range), attack; else reposition.

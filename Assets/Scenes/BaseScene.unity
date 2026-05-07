@@ -4101,7 +4101,6 @@ GameObject:
   - component: {fileID: 249707800}
   - component: {fileID: 249707802}
   - component: {fileID: 249707803}
-  - component: {fileID: 249707804}
   m_Layer: 0
   m_Name: GameManager
   m_TagString: Untagged
@@ -4175,24 +4174,6 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::UnitColorController
   player1Color: {r: 0, g: 0, b: 1, a: 1}
   player2Color: {r: 1, g: 0, b: 0, a: 1}
---- !u!114 &249707804
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 249707799}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: a7f6e5d4c3b2a1908f7e6d5c4b3a2918, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::Mission1CaptureManager
-  flags:
-  - {fileID: 0}
-  - {fileID: 0}
-  - {fileID: 0}
-  playerOwner: 0
-  checkIntervalSeconds: 0.25
 --- !u!1 &265085878
 GameObject:
   m_ObjectHideFlags: 0
@@ -9445,6 +9426,123 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 532090868}
   m_CullTransparentMesh: 1
+--- !u!1 &541380629
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 541380631}
+  - component: {fileID: 541380630}
+  m_Layer: 0
+  m_Name: ChessGrid
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &541380630
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 541380629}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7770a7d81de8b984f81a2dbf18d57154, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::ChessGrid
+  width: 2
+  height: 10
+  cellSize: 2.1
+  originPosition: {x: -20.1, y: 1, z: -6.98}
+  showGrid: 1
+  gridColor: {r: 1, g: 0, b: 0.038582325, a: 1}
+--- !u!4 &541380631
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 541380629}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 1, z: 1.4352}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &541954871
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 541954873}
+  - component: {fileID: 541954872}
+  m_Layer: 0
+  m_Name: ArmyDeployment
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &541954872
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 541954871}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7c9e4f2a1d8b4056a3c7e9f1d2b4e8a0, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::ArmyDeploymentController
+  armyPointBudget: 120
+  deploymentZoneMin: {x: -32, y: -36}
+  deploymentZoneMax: {x: 43, y: 44}
+  offers:
+  - unitPrefab: {fileID: 2055164418362516241, guid: d02ee6267c95ad248852c5f91ed3c4e3, type: 3}
+    costPoints: 3
+    maxCopies: -1
+  - unitPrefab: {fileID: 3238092877526122805, guid: 7f5a3350d2c24d74899b1d927fdd0790, type: 3}
+    costPoints: 4
+    maxCopies: -1
+  deploymentRoot: {fileID: 0}
+  cardPrefab: {fileID: 0}
+  cardHandContainer: {fileID: 0}
+  returnDropZone: {fileID: 0}
+  budgetText: {fileID: 0}
+  confirmButton: {fileID: 0}
+  confirmHintText: {fileID: 0}
+  createMinimalUiIfMissing: 1
+  requireAtLeastOneUnit: 1
+  requireExactlyOneKing: 0
+  showDeploymentZoneOverlay: 1
+  deploymentZoneColor: {r: 0.2, g: 0.85, b: 0.45, a: 0.38}
+  deploymentZoneYOffset: 0.04
+--- !u!4 &541954873
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 541954871}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: -16, y: 2.25051, z: -6.1539803}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &557825685
 GameObject:
   m_ObjectHideFlags: 0
@@ -15033,17 +15131,6 @@ MonoBehaviour:
     serializedVersion: 2
     m_Bits: 4294967295
   closeAwarenessRadius: 3
-  flagThreatRadius: 10
-  defendOffsetMeters: 3
-  attackChaseScore: 520
-  advanceWhen2FlagsSafeBonus: 180
-  recaptureScore: 600
-  defendScore: 450
-  interceptScore: 350
-  flagStopRadius: 2
-  defendSpreadRadius: 8
-  alreadyDefendedPenalty: 220
-  rotationMaxExtraDistanceMeters: 8
 --- !u!4 &852771770
 Transform:
   m_ObjectHideFlags: 0
@@ -20228,6 +20315,106 @@ MonoBehaviour:
   m_SelectedFaces: 
   m_SelectedEdges: []
   m_SelectedVertices: 
+--- !u!1 &1176524455
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1176524456}
+  - component: {fileID: 1176524459}
+  - component: {fileID: 1176524458}
+  - component: {fileID: 1176524457}
+  m_Layer: 5
+  m_Name: DiceRenderUI
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!224 &1176524456
+RectTransform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1176524455}
+  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 2099847604}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+  m_AnchorMin: {x: 0.5, y: 0.5}
+  m_AnchorMax: {x: 0.5, y: 0.5}
+  m_AnchoredPosition: {x: -0.000061035156, y: 50}
+  m_SizeDelta: {x: 100, y: 100}
+  m_Pivot: {x: 0.5, y: 0.5}
+--- !u!114 &1176524457
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1176524455}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: cefd92d701eee5442a948e338fde153a, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::DiceRenderUI
+  targetRawImage: {fileID: 1176524458}
+  hideInActionMode: 1
+  rollKey: 1
+  clickToRoll: 1
+  dicePrefab: {fileID: 2421698870026305411, guid: bff6b211b9b17b445b4c818b70187e87, type: 3}
+  diceScale: 2
+  textureSize: 512
+  clearColor: {r: 0, g: 0, b: 0, a: 0}
+  diceIsolationLayerName: DiceRender
+  orthographicSize: 1.5
+  cameraHeight: 3.3
+  alignDigitUpright: 1
+  spinSeconds: 2
+  settleSeconds: 0.25
+  spinDegreesPerSecond: 720
+--- !u!114 &1176524458
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1176524455}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 1344c3c82d62a2a41a3576d8abb8e3ea, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: UnityEngine.UI::UnityEngine.UI.RawImage
+  m_Material: {fileID: 0}
+  m_Color: {r: 1, g: 1, b: 1, a: 1}
+  m_RaycastTarget: 0
+  m_RaycastPadding: {x: 0, y: 0, z: 0, w: 0}
+  m_Maskable: 1
+  m_OnCullStateChanged:
+    m_PersistentCalls:
+      m_Calls: []
+  m_Texture: {fileID: 0}
+  m_UVRect:
+    serializedVersion: 2
+    x: 0
+    y: 0
+    width: 1
+    height: 1
+--- !u!222 &1176524459
+CanvasRenderer:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1176524455}
+  m_CullTransparentMesh: 1
 --- !u!4 &1198059497 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 1715512513874196907, guid: d02ee6267c95ad248852c5f91ed3c4e3, type: 3}
@@ -22639,15 +22826,16 @@ MonoBehaviour:
   turnPanel: {fileID: 1522392738}
   turnText: {fileID: 144907983}
   diceText: {fileID: 192096283}
-  instructionsPanel: {fileID: 1576609937}
-  instructionsText: {fileID: 222547988}
-  closeInstructionsButton: {fileID: 1622999123}
-  autoHideDelay: 8
+  instructionsPanel: {fileID: 0}
+  instructionsText: {fileID: 0}
+  closeInstructionsButton: {fileID: 0}
+  autoHideDelay: 1
   tacticalHUDContainer: {fileID: 1014196153}
   raycastDistance: 100
   unitLayer:
     serializedVersion: 2
     m_Bits: 8
+  iconHoverDelaySeconds: 0.5
 --- !u!1001 &1515038602
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -23123,7 +23311,7 @@ MonoBehaviour:
   m_OverrideTileSize: 0
   m_TileSize: 256
   m_OverrideVoxelSize: 0
-  m_VoxelSize: 0.16666667
+  m_VoxelSize: 0.10666666
   m_MinRegionArea: 2
   m_NavMeshData: {fileID: 23800000, guid: 36d5cada7a0bb8b418833e134298e171, type: 2}
   m_BuildHeightMesh: 0
@@ -23195,8 +23383,16 @@ MonoBehaviour:
   yawRotationSpeed: 0.25
   enableZoom: 1
   zoomSpeed: 40
+  enableCycleFriendlyUnitsInTactical: 1
+  cycleFriendlyUnitsKey: 3
   turnText: {fileID: 144907983}
   turnPanel: {fileID: 0}
+  centerTacticalCameraOnLastPlayedUnit: 1
+  centerOnUnitWorldOffsetY: 0
+  disableBotFollowCamera: 0
+  snapBotFollowCameraInstantly: 1
+  showKnownUnitsBodiesDuringBotCinematic: 1
+  preserveTacticalCameraInPvBot: 1
 --- !u!4 &1618921900
 Transform:
   m_ObjectHideFlags: 0
@@ -29852,6 +30048,7 @@ RectTransform:
   - {fileID: 1484493965}
   - {fileID: 1136801060}
   - {fileID: 1014196154}
+  - {fileID: 1176524456}
   m_Father: {fileID: 39325150}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
@@ -30630,7 +30827,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!4 &2118536961
 Transform:
   m_ObjectHideFlags: 0
@@ -31852,3 +32049,5 @@ SceneRoots:
   - {fileID: 661613987}
   - {fileID: 989980890}
   - {fileID: 267447194}
+  - {fileID: 541954873}
+  - {fileID: 541380631}

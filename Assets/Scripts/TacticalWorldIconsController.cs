@@ -68,6 +68,16 @@ public class TacticalWorldIconsController : MonoBehaviour
         foreach (Unit u in all)
         {
             if (u == null || u.GetHealth() <= 0) continue;
+
+            // PvBot fog-of-war: врагов (Player2) не показываем в тактике (BF-иконки),
+            // пока они не были замечены игроком в экшене (spotted).
+            if (GameManager.Instance != null && GameManager.Instance.GetGameMode() == GameMode.PlayerVsBot &&
+                u.owner == Player.Player2)
+            {
+                if (EnemyIntelTracker.Instance == null || !EnemyIntelTracker.Instance.IsSpotted(u))
+                    continue;
+            }
+
             alive.Add(u);
             if (!icons.ContainsKey(u))
                 CreateIcon(u);
@@ -110,6 +120,17 @@ public class TacticalWorldIconsController : MonoBehaviour
             Unit unit = kv.Key;
             TacticalWorldUnitIcon icon = kv.Value;
             if (unit == null || icon == null) continue;
+
+            // Во время кино-показа хода бота: прячем BF-иконки для тех юнитов, чьи 3D-модели показываем.
+            if (CameraManager.Instance != null && CameraManager.Instance.ShouldHideTacticalIconDuringCinematic(unit))
+            {
+                icon.gameObject.SetActive(false);
+                continue;
+            }
+            else if (!icon.gameObject.activeSelf)
+            {
+                icon.gameObject.SetActive(true);
+            }
 
             RectTransform rt = icon.transform as RectTransform;
             if (rt == null) continue;

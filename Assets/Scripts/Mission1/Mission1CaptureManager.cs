@@ -100,6 +100,8 @@ public class Mission1CaptureManager : MonoBehaviour
     {
         if (isResolved) return;
         if (GameManager.Instance == null) return;
+        // Пока игрок расставляет армию на поле — ещё нет его юнитов; не считать это поражением.
+        if (GameManager.Instance.IsArmyDeploymentPhase()) return;
         if (flags == null || flags.Count < 3) return;
 
         bool allFlagsCapturedByPlayer =

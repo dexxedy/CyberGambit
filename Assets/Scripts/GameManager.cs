@@ -2,6 +2,8 @@ using UnityEngine;
 using TMPro;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
+using System;
+using System.Collections;
 
 public enum Player { Player1, Player2 }
 public enum GameMode { PlayerVsPlayer, PlayerVsBot }
@@ -9,6 +11,12 @@ public enum GameMode { PlayerVsPlayer, PlayerVsBot }
 public class GameManager : MonoBehaviour
 {
     public static GameManager Instance;
+
+    /// <summary>
+    /// Событие броска кубика (значение кубика).
+    /// Используется UI/визуализациями (например, 3D-кость в тактике).
+    /// </summary>
+    public static event Action<int> OnDiceRolled;
     public Player currentPlayer = Player.Player1;
     private static GameMode gameMode = GameMode.PlayerVsPlayer;
     private static bool gameModeSetFromMenu = false; // Флаг, что режим был установлен из меню
@@ -40,13 +48,12 @@ public class GameManager : MonoBehaviour
     private bool isGameOver = false; // Флаг, чтобы остановить игру
     private bool isPaused = false;
 
-    // Нужно для правил "первого хода" (например, запрет выбора задних фигур)
-    private bool player1CompletedAtLeastOneTurn = false;
-    private bool player2CompletedAtLeastOneTurn = false;
-
     // Направления "вперед" для каждого игрока (определяются по стартовой расстановке)
     private Vector2Int player1Forward = new Vector2Int(0, 1);
     private Vector2Int player2Forward = new Vector2Int(0, -1);
+
+    /// <summary> Фаза расстановки армии (PvBot): игрок расставляет юнитов до броска кости. </summary>
+    private bool armyDeploymentPhaseActive = false;
 
     void Awake()
     {
@@ -57,31 +64,54 @@ public class GameManager : MonoBehaviour
         else
         {
             Destroy(gameObject);
+            return;
         }
+
+        // Режим из меню (SetGameMode) или Test Game Mode из инспектора — применяем в Awake, а не в Start,
+        // иначе другие скрипты в Start/корутинах (например ArmyDeploymentController) читают gameMode
+        // пока ещё равным дефолту PlayerVsPlayer.
+        if (!gameModeSetFromMenu)
+            gameMode = testGameMode;
     }
     
     void Start()
     {
-        // Если режим не был установлен из MainMenu, используем режим из Inspector
-        // Это позволяет тестировать режимы, запуская SampleScene напрямую
-        if (!gameModeSetFromMenu)
-        {
-            gameMode = testGameMode;
-        }
-        
-        RollDiceForCurrentTurn();
+        // Кубик для игрока бросается вручную (UI/клавиша). Бот бросает автоматически в своём ходу.
 
         // Определяем "вперед" после того, как юниты привязались к сетке
         StartCoroutine(DetectForwardDirectionsAfterInit());
     }
 
-    private System.Collections.IEnumerator DetectForwardDirectionsAfterInit()
+    /// <summary> Активна ли фаза расстановки армии перед боем (только миссии с ArmyDeploymentController). </summary>
+    public bool IsArmyDeploymentPhase() => armyDeploymentPhaseActive;
+
+    /// <summary> Вызывается ArmyDeploymentController при старте миссии с ручной расстановкой. </summary>
+    public void BeginArmyDeploymentPhase()
+    {
+        armyDeploymentPhaseActive = true;
+    }
+
+    /// <summary> Завершает расстановку и включает обычный тактический ход с костью. </summary>
+    public void CompleteArmyDeploymentPhase()
+    {
+        if (!armyDeploymentPhaseActive) return;
+        armyDeploymentPhaseActive = false;
+        ResetDiceForNextTurn();
+        StartCoroutine(DetectForwardDirectionsAfterInit());
+    }
+
+    private IEnumerator DetectForwardDirectionsAfterInit()
     {
         // Ждем кадр, чтобы ChessRulesManager успел выполнить SnapToGrid в Start()
         yield return null;
+        ApplyForwardDirectionsFromUnitPositions();
+    }
 
+    /// <summary> Пересчитывает направление «вперёд» по средним позициям игроков на сетке. </summary>
+    private void ApplyForwardDirectionsFromUnitPositions()
+    {
         Unit[] allUnits = FindObjectsByType<Unit>(FindObjectsSortMode.None);
-        if (allUnits == null || allUnits.Length == 0 || ChessGrid.Instance == null) yield break;
+        if (allUnits == null || allUnits.Length == 0 || ChessGrid.Instance == null) return;
 
         Vector2 sum1 = Vector2.zero;
         Vector2 sum2 = Vector2.zero;
@@ -104,13 +134,12 @@ public class GameManager : MonoBehaviour
             }
         }
 
-        if (c1 == 0 || c2 == 0) yield break;
+        if (c1 == 0 || c2 == 0) return;
 
         Vector2 avg1 = sum1 / c1;
         Vector2 avg2 = sum2 / c2;
-        Vector2 delta = avg2 - avg1; // куда "смотрит" Player1, чтобы дойти до Player2
+        Vector2 delta = avg2 - avg1;
 
-        // Выбираем доминирующую ось (по которой игроки "разнесены" сильнее всего)
         if (Mathf.Abs(delta.x) > Mathf.Abs(delta.y))
         {
             int sx = delta.x >= 0 ? 1 : -1;
@@ -134,15 +163,17 @@ public class GameManager : MonoBehaviour
     public int RollDiceForCurrentTurn()
     {
         if (isGameOver) return currentTurnDice;
-        
+        if (armyDeploymentPhaseActive) return currentTurnDice;
+
         int min = Mathf.Min(diceMin, diceMax);
         int max = Mathf.Max(diceMin, diceMax);
         min = Mathf.Max(0, min);
         max = Mathf.Max(min, max);
         
         // Random.Range int max is exclusive
-        currentTurnDice = Random.Range(min, max + 1);
+        currentTurnDice = UnityEngine.Random.Range(min, max + 1);
         hasRolledDiceThisTurn = true;
+        OnDiceRolled?.Invoke(currentTurnDice);
         return currentTurnDice;
     }
     
@@ -325,14 +356,15 @@ public class GameManager : MonoBehaviour
     public void SwitchTurn()
     {
         if (isGameOver) return;
-
-        // Помечаем, что текущий игрок уже завершал хотя бы один ход
-        if (currentPlayer == Player.Player1) player1CompletedAtLeastOneTurn = true;
-        else player2CompletedAtLeastOneTurn = true;
+        if (armyDeploymentPhaseActive) return;
 
         currentPlayer = (currentPlayer == Player.Player1) ? Player.Player2 : Player.Player1;
         ResetDiceForNextTurn();
-        RollDiceForCurrentTurn();
+        // Автобросок только для бота. Игрок бросает сам (см. DiceRenderUI / будущий UI).
+        if (IsBotTurn())
+        {
+            RollDiceForCurrentTurn();
+        }
         
         // Обновляем эффекты способностей всех юнитов при смене хода
         Unit[] allUnits = FindObjectsByType<Unit>(FindObjectsSortMode.None);
@@ -380,11 +412,6 @@ public class GameManager : MonoBehaviour
     public bool IsBotTurn()
     {
         return gameMode == GameMode.PlayerVsBot && currentPlayer == Player.Player2;
-    }
-
-    public bool IsFirstTurnForPlayer(Player player)
-    {
-        return player == Player.Player1 ? !player1CompletedAtLeastOneTurn : !player2CompletedAtLeastOneTurn;
     }
 
     public Vector2Int GetForwardDirection(Player player)

@@ -11,6 +11,9 @@ public class ChessGrid : MonoBehaviour
     [SerializeField] public float cellSize = 2.0f; // Размер одной клетки в метрах Unity
     [SerializeField] private Vector3 originPosition = Vector3.zero; // Где начинается клетка A1
 
+    /// <summary> Левый-ближний угол сетки (A1) — для луча на плоскость поля. </summary>
+    public Vector3 GridOrigin => originPosition;
+
     [Header("Визуализация")]
     [SerializeField] private bool showGrid = true;
     [SerializeField] private Color gridColor = Color.green;

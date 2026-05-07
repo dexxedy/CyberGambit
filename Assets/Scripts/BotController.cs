@@ -84,6 +84,7 @@ public class BotController : MonoBehaviour
     public void ExecuteBotTurn()
     {
         if (isExecutingTurn) return;
+        if (GameManager.Instance != null && GameManager.Instance.IsArmyDeploymentPhase()) return;
         if (GameManager.Instance == null || !GameManager.Instance.IsBotTurn()) return;
         
         currentTurnNumber++;
@@ -832,10 +833,13 @@ public class BotController : MonoBehaviour
             yield break;
         }
 
-        // Визуализация хода бота (без движения камеры): покажем путь и цель.
-        if (GameManager.Instance != null && GameManager.Instance.GetGameMode() == GameMode.PlayerVsBot &&
+        // Визуализация хода бота: показываем ТОЛЬКО если бот-юнит уже "известен" игроку (spotted).
+        bool showBotTurn =
+            GameManager.Instance != null && GameManager.Instance.GetGameMode() == GameMode.PlayerVsBot &&
             CameraManager.Instance != null && !CameraManager.Instance.IsActionMode() &&
-            BotTurnTacticalOverlay.Instance != null)
+            EnemyIntelTracker.Instance != null && EnemyIntelTracker.Instance.IsSpotted(unit);
+
+        if (showBotTurn && BotTurnTacticalOverlay.Instance != null)
         {
             var pts = BuildPointsTrimmedByDistance(corners, travelledMeters);
             if (pts != null && pts.Count >= 2)
@@ -847,7 +851,7 @@ public class BotController : MonoBehaviour
         yield return new WaitForSeconds(moveDelay);
         yield return StartCoroutine(MoveUnitAlongCorners(unit, corners, travelledMeters));
 
-        if (BotTurnTacticalOverlay.Instance != null)
+        if (showBotTurn && BotTurnTacticalOverlay.Instance != null)
             BotTurnTacticalOverlay.Instance.Clear(unit);
     }
 
@@ -856,9 +860,12 @@ public class BotController : MonoBehaviour
 
     internal IEnumerator PerformAttackInternal(Unit attacker, Unit target)
     {
-        if (GameManager.Instance != null && GameManager.Instance.GetGameMode() == GameMode.PlayerVsBot &&
+        bool showBotTurn =
+            GameManager.Instance != null && GameManager.Instance.GetGameMode() == GameMode.PlayerVsBot &&
             CameraManager.Instance != null && !CameraManager.Instance.IsActionMode() &&
-            BotTurnTacticalOverlay.Instance != null && target != null)
+            EnemyIntelTracker.Instance != null && EnemyIntelTracker.Instance.IsSpotted(attacker);
+
+        if (showBotTurn && BotTurnTacticalOverlay.Instance != null && target != null)
         {
             BotTurnTacticalOverlay.Instance.Ping(target.transform.position);
         }
@@ -977,6 +984,9 @@ public class BotController : MonoBehaviour
         CharacterController controller = unit.GetComponent<CharacterController>();
         float remaining = Mathf.Max(0f, maxDistanceMeters);
 
+        // Анимация движения для бот-перемещения (юнит не isControlled, поэтому Unit.Update() её не крутит).
+        unit.SetExternalMoveAnimation(true);
+
         // Начинаем с текущей позиции (не обязательно совпадает с corners[0]).
         Vector3 current = unit.transform.position;
         for (int i = 1; i < corners.Length && remaining > 0.001f; i++)
@@ -1025,6 +1035,7 @@ public class BotController : MonoBehaviour
 
         unit.ConsumeMoveMeters(maxDistanceMeters - Mathf.Max(0f, remaining));
         unit.RefreshGridPositionFromWorld();
+        unit.SetExternalMoveAnimation(false);
     }
 
     private bool TryGetReachablePointByBudget(Vector3 from, Vector3 target, float budgetMeters, out Vector3 reachablePoint, out float travelledMeters)
