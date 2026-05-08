@@ -24,7 +24,7 @@ public class Mission2BotBrain : MonoBehaviour, IBotMissionBrain
     public bool CanRun()
     {
         // Mission2 exists if there are destructible objectives in scene.
-        DestructibleObjective[] objs = FindObjectsByType<DestructibleObjective>(FindObjectsSortMode.None);
+        DestructibleObjective[] objs = FindObjectsByType<DestructibleObjective>(FindObjectsInactive.Exclude);
         return objs != null && objs.Any(o => o != null && !o.IsDestroyed);
     }
 
@@ -33,7 +33,7 @@ public class Mission2BotBrain : MonoBehaviour, IBotMissionBrain
         if (controller == null)
             yield break;
 
-        Unit[] all = FindObjectsByType<Unit>(FindObjectsSortMode.None);
+        Unit[] all = FindObjectsByType<Unit>(FindObjectsInactive.Exclude);
         Unit[] botUnits = all.Where(u => u != null && u.owner == Player.Player2 && u.GetHealth() > 0).ToArray();
         if (botUnits.Length == 0)
         {

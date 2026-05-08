@@ -21,6 +21,14 @@ public class TacticalWorldUnitIcon : MonoBehaviour, IPointerClickHandler,
 
     public Unit TargetUnit => unit;
 
+    public void SetSquareSize(float sizePixels)
+    {
+        RectTransform rt = transform as RectTransform;
+        if (rt == null) return;
+        float s = Mathf.Max(0f, sizePixels);
+        rt.sizeDelta = new Vector2(s, s);
+    }
+
     public void Setup(Unit targetUnit, TacticalWorldIconsController controller)
     {
         unit = targetUnit;

@@ -104,7 +104,7 @@ public class BotController : MonoBehaviour
         if (botKing == null) return 0f;
         
         float threatLevel = 0f;
-        Unit[] allUnits = FindObjectsByType<Unit>(FindObjectsSortMode.None);
+        Unit[] allUnits = FindObjectsByType<Unit>(FindObjectsInactive.Exclude);
         List<Unit> enemies = allUnits
             .Where(u => u != null && u.owner == Player.Player1 && u.GetHealth() > 0)
             .ToList();
@@ -143,7 +143,7 @@ public class BotController : MonoBehaviour
         if (enemyKing == null) return 0f;
         
         float vulnerabilityLevel = 0f;
-        Unit[] allUnits = FindObjectsByType<Unit>(FindObjectsSortMode.None);
+        Unit[] allUnits = FindObjectsByType<Unit>(FindObjectsInactive.Exclude);
         List<Unit> botUnits = allUnits
             .Where(u => u != null && u.owner == Player.Player2 && u.GetHealth() > 0)
             .ToList();
@@ -173,7 +173,7 @@ public class BotController : MonoBehaviour
     /// </summary>
     private Unit GetBotKing()
     {
-        Unit[] allUnits = FindObjectsByType<Unit>(FindObjectsSortMode.None);
+        Unit[] allUnits = FindObjectsByType<Unit>(FindObjectsInactive.Exclude);
         return allUnits
             .FirstOrDefault(u => u != null && u.owner == Player.Player2 && u.chessType == ChessUnitType.King && u.GetHealth() > 0);
     }
@@ -183,7 +183,7 @@ public class BotController : MonoBehaviour
     /// </summary>
     private Unit GetEnemyKing()
     {
-        Unit[] allUnits = FindObjectsByType<Unit>(FindObjectsSortMode.None);
+        Unit[] allUnits = FindObjectsByType<Unit>(FindObjectsInactive.Exclude);
         return allUnits
             .FirstOrDefault(u => u != null && u.owner == Player.Player1 && u.chessType == ChessUnitType.King && u.GetHealth() > 0);
     }
@@ -378,7 +378,7 @@ public class BotController : MonoBehaviour
     /// </summary>
     private Unit SelectBestUnit(BotGameMode gameMode)
     {
-        Unit[] allUnits = FindObjectsByType<Unit>(FindObjectsSortMode.None);
+        Unit[] allUnits = FindObjectsByType<Unit>(FindObjectsInactive.Exclude);
         List<Unit> botUnits = allUnits
             .Where(u => u != null && u.owner == Player.Player2 && u.GetHealth() > 0)
             .ToList();
@@ -406,7 +406,7 @@ public class BotController : MonoBehaviour
             if (botKing != null)
             {
                 // Ищем врагов рядом с королем
-                Unit[] allEnemies = FindObjectsByType<Unit>(FindObjectsSortMode.None);
+                Unit[] allEnemies = FindObjectsByType<Unit>(FindObjectsInactive.Exclude);
                 List<Unit> threats = allEnemies
                     .Where(u => u != null && u.owner == Player.Player1 && u.GetHealth() > 0)
                     .Where(u => GetDistance(botKing, u) <= attackRange * 2f)
@@ -575,7 +575,7 @@ public class BotController : MonoBehaviour
                 Unit botKing = GetBotKing();
                 if (botKing != null)
                 {
-                    Unit[] allUnits = FindObjectsByType<Unit>(FindObjectsSortMode.None);
+                    Unit[] allUnits = FindObjectsByType<Unit>(FindObjectsInactive.Exclude);
                     return allUnits
                         .Where(u => u != null && u.owner == Player.Player1 && u.GetHealth() > 0)
                         .Where(u => GetDistance(botKing, u) <= attackRange * 2f)
@@ -613,7 +613,7 @@ public class BotController : MonoBehaviour
             Unit botKing = GetBotKing();
             if (botKing == king)
             {
-                Unit[] allUnits = FindObjectsByType<Unit>(FindObjectsSortMode.None);
+                Unit[] allUnits = FindObjectsByType<Unit>(FindObjectsInactive.Exclude);
                 bool hasThreat = allUnits
                     .Any(u => u != null && u.owner == Player.Player1 && u.GetHealth() > 0 && 
                               GetDistance(botKing, u) <= attackRange);
@@ -626,7 +626,7 @@ public class BotController : MonoBehaviour
         UnitAbilities abilities = king.GetComponent<UnitAbilities>();
         if (abilities != null && abilities.IsAbilityReady())
         {
-            Unit[] allUnits = FindObjectsByType<Unit>(FindObjectsSortMode.None);
+            Unit[] allUnits = FindObjectsByType<Unit>(FindObjectsInactive.Exclude);
             bool hasWoundedAlly = allUnits
                 .Any(u => u != null && u.owner == king.owner && u != king && u.GetHealth() > 0 &&
                           (float)u.GetHealth() / u.GetMaxHealth() < 0.5f);
@@ -645,7 +645,7 @@ public class BotController : MonoBehaviour
         if (ChessGrid.Instance == null) return false;
         
         Vector2Int unitPos = ChessGrid.Instance.WorldToGridCoords(unit.transform.position);
-        Unit[] allUnits = FindObjectsByType<Unit>(FindObjectsSortMode.None);
+        Unit[] allUnits = FindObjectsByType<Unit>(FindObjectsInactive.Exclude);
         
         // Проверяем соседние клетки
         for (int dx = -1; dx <= 1; dx++)
@@ -671,7 +671,7 @@ public class BotController : MonoBehaviour
     
     private Unit FindDefenderUnit(List<Unit> botUnits)
     {
-        Unit[] allUnits = FindObjectsByType<Unit>(FindObjectsSortMode.None);
+        Unit[] allUnits = FindObjectsByType<Unit>(FindObjectsInactive.Exclude);
         List<Unit> enemies = allUnits
             .Where(u => u != null && u.owner == Player.Player1 && u.GetHealth() > 0)
             .ToList();
@@ -724,7 +724,7 @@ public class BotController : MonoBehaviour
     {
         target = null;
         if (attacker == null) return false;
-        Unit[] allUnits = FindObjectsByType<Unit>(FindObjectsSortMode.None);
+        Unit[] allUnits = FindObjectsByType<Unit>(FindObjectsInactive.Exclude);
         List<Unit> enemies = allUnits.Where(u => u != null && u.owner == Player.Player1 && u.GetHealth() > 0).ToList();
         float best = float.NegativeInfinity;
         foreach (Unit e in enemies)
@@ -787,7 +787,7 @@ public class BotController : MonoBehaviour
         if (GameManager.Instance.GetGameMode() != GameMode.PlayerVsBot) return;
 
         // Рисуем "конус зрения" вокруг бота-контроллера (по ближайшему живому юниту Player2)
-        Unit[] allUnits = FindObjectsByType<Unit>(FindObjectsSortMode.None);
+        Unit[] allUnits = FindObjectsByType<Unit>(FindObjectsInactive.Exclude);
         Unit botUnit = allUnits
             .Where(u => u != null && u.owner == Player.Player2 && u.GetHealth() > 0)
             .OrderBy(u => Vector3.Distance(u.transform.position, transform.position))
@@ -1409,7 +1409,7 @@ public class BotController : MonoBehaviour
         if (moves.Count == 0) return null;
         
         // Получаем позиции союзников (чтобы не кучковаться)
-        Unit[] allUnits = FindObjectsByType<Unit>(FindObjectsSortMode.None);
+        Unit[] allUnits = FindObjectsByType<Unit>(FindObjectsInactive.Exclude);
         List<Vector2Int> allyPositions = allUnits
             .Where(u => u != null && u.owner == unit.owner && u != unit && u.GetHealth() > 0)
             .Select(u => ChessGrid.Instance.WorldToGridCoords(u.transform.position))
@@ -1462,7 +1462,7 @@ public class BotController : MonoBehaviour
                 }
                 
                 // Дополнительный бонус: проверяем всех врагов в радиусе после хода
-                Unit[] allUnits = FindObjectsByType<Unit>(FindObjectsSortMode.None);
+                Unit[] allUnits = FindObjectsByType<Unit>(FindObjectsInactive.Exclude);
                 int enemiesInRangeAfterMove = allUnits
                     .Count(u => u != null && u.owner != unit.owner && u.GetHealth() > 0 && 
                                Vector3.Distance(moveWorldPos, u.transform.position) <= attackRange + approachDistance);
@@ -1523,7 +1523,7 @@ public class BotController : MonoBehaviour
         Unit nearestEnemy = FindNearestEnemy(unit);
         
         // Получаем позиции союзников
-        Unit[] allUnits = FindObjectsByType<Unit>(FindObjectsSortMode.None);
+        Unit[] allUnits = FindObjectsByType<Unit>(FindObjectsInactive.Exclude);
         List<Vector2Int> allyPositions = allUnits
             .Where(u => u != null && u.owner == unit.owner && u != unit && u.GetHealth() > 0)
             .Select(u => ChessGrid.Instance.WorldToGridCoords(u.transform.position))
@@ -1658,7 +1658,7 @@ public class BotController : MonoBehaviour
     {
         if (attacker == null) return null;
         
-        Unit[] allUnits = FindObjectsByType<Unit>(FindObjectsSortMode.None);
+        Unit[] allUnits = FindObjectsByType<Unit>(FindObjectsInactive.Exclude);
         
         List<Unit> enemiesInRange = allUnits
             .Where(u => u != null && u.owner != attacker.owner && u.GetHealth() > 0)
@@ -2004,7 +2004,7 @@ public class BotController : MonoBehaviour
         // - HP слона < 70%
         // - Слон собирается атаковать (контратака)
         
-        Unit[] allUnits = FindObjectsByType<Unit>(FindObjectsSortMode.None);
+        Unit[] allUnits = FindObjectsByType<Unit>(FindObjectsInactive.Exclude);
         int nearbyEnemies = allUnits
             .Count(u => u != null && u.owner != bishop.owner && u.GetHealth() > 0 && 
                        GetDistance(bishop, u) <= attackRange * 1.5f);
@@ -2049,7 +2049,7 @@ public class BotController : MonoBehaviour
         Unit botKing = GetBotKing();
         if (botKing != null)
         {
-            Unit[] allUnits = FindObjectsByType<Unit>(FindObjectsSortMode.None);
+            Unit[] allUnits = FindObjectsByType<Unit>(FindObjectsInactive.Exclude);
             bool hasThreat = allUnits
                 .Any(u => u != null && u.owner == Player.Player1 && u.GetHealth() > 0 && 
                           GetDistance(botKing, u) <= attackRange);
@@ -2081,7 +2081,7 @@ public class BotController : MonoBehaviour
         
         // Проверяем безопасность короля
         bool isKingSafe = true;
-        Unit[] allUnits = FindObjectsByType<Unit>(FindObjectsSortMode.None);
+        Unit[] allUnits = FindObjectsByType<Unit>(FindObjectsInactive.Exclude);
         bool hasThreat = allUnits
             .Any(u => u != null && u.owner == Player.Player1 && u.GetHealth() > 0 && 
                      GetDistance(king, u) <= attackRange);
@@ -2149,7 +2149,7 @@ public class BotController : MonoBehaviour
     
     private void TryKingHeal(Unit king)
     {
-        Unit[] allUnits = FindObjectsByType<Unit>(FindObjectsSortMode.None);
+        Unit[] allUnits = FindObjectsByType<Unit>(FindObjectsInactive.Exclude);
         
         Unit wounded = allUnits
             .Where(u => u != null && u.owner == king.owner && u != king && u.GetHealth() > 0)
@@ -2190,7 +2190,7 @@ public class BotController : MonoBehaviour
     {
         if (unit == null) return null;
         
-        Unit[] allUnits = FindObjectsByType<Unit>(FindObjectsSortMode.None);
+        Unit[] allUnits = FindObjectsByType<Unit>(FindObjectsInactive.Exclude);
         var enemies = allUnits
             .Where(u => u != null && u.owner != unit.owner && u.GetHealth() > 0)
             .Select(u => new { Unit = u, Distance = GetDistance(unit, u) })
@@ -2242,7 +2242,7 @@ public class BotController : MonoBehaviour
     
     private bool HasEnemyNearby(Unit unit)
     {
-        Unit[] allUnits = FindObjectsByType<Unit>(FindObjectsSortMode.None);
+        Unit[] allUnits = FindObjectsByType<Unit>(FindObjectsInactive.Exclude);
         return allUnits.Any(u => u != null && u.owner != unit.owner && u.GetHealth() > 0 && GetDistance(unit, u) <= enemyDetectionRange);
     }
     
@@ -2255,7 +2255,7 @@ public class BotController : MonoBehaviour
     {
         if (ChessGrid.Instance == null || !ChessGrid.Instance.IsValidCoord(pos.x, pos.y)) return true;
         
-        Unit[] allUnits = FindObjectsByType<Unit>(FindObjectsSortMode.None);
+        Unit[] allUnits = FindObjectsByType<Unit>(FindObjectsInactive.Exclude);
         return allUnits.Any(u => u != null && u != excludeUnit && u.GetHealth() > 0 &&
             ChessGrid.Instance.WorldToGridCoords(u.transform.position) == pos);
     }

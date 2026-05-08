@@ -31,7 +31,7 @@ namespace Mission2
         {
             if (autoFindObjectivesInScene)
             {
-                objectives = FindObjectsByType<DestructibleObjective>(FindObjectsSortMode.None)
+                objectives = FindObjectsByType<DestructibleObjective>(FindObjectsInactive.Exclude)
                     .Where(o => o != null)
                     .ToList();
             }

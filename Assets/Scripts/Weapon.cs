@@ -10,6 +10,16 @@ public class Weapon : MonoBehaviour
     [Tooltip("Точка выстрела (опционально). Если не задано — используем origin из камеры.")]
     [SerializeField] private Transform muzzle;
 
+    [Header("VFX")]
+    [SerializeField] private GameObject muzzleFlashVfxPrefab;
+    [SerializeField] private GameObject tracerVfxPrefab;
+    [SerializeField] private GameObject impactVfxPrefab;
+    [Tooltip("Какие слои считаем 'поверхностями' для попадания/трассера. Если не трогать — будет Everything.")]
+    [SerializeField] private LayerMask vfxRayMask = ~0;
+    [Header("Camera shake (optional)")]
+    [SerializeField] private float fireShakeDuration = 0.08f;
+    [SerializeField] private float fireShakeMagnitude = 0.03f;
+
     [Header("Runtime State (read-only)")]
     [SerializeField] private int ammoInMag;
     [SerializeField] private int ammoReserve;
@@ -86,12 +96,24 @@ public class Weapon : MonoBehaviour
         nextFireTime = Time.time + Mathf.Max(0f, interval);
 
         float maxRange = Mathf.Max(0.1f, config.maxHitRangeMeters);
-        LayerMask mask = config.hitMask;
         bool friendly = config.friendlyFire;
         int baseDamage = Mathf.Max(0, config.damagePerHit);
 
-        if (Physics.Raycast(origin, direction, out RaycastHit hit, maxRange, mask, QueryTriggerInteraction.Ignore))
+        SpawnMuzzleFlash();
+        DoCameraShake();
+
+        bool hasHit = false;
+        Vector3 hitPoint = origin + direction * maxRange;
+        Vector3 hitNormal = -direction;
+
+        // Один raycast "по миру": даёт и точку попадания (стены/пол/юниты), и не позволяет стрелять сквозь коллайдеры.
+        LayerMask rayMask = vfxRayMask.value != 0 ? vfxRayMask : ~0;
+        if (Physics.Raycast(origin, direction, out RaycastHit hit, maxRange, rayMask, QueryTriggerInteraction.Ignore))
         {
+            hasHit = true;
+            hitPoint = hit.point;
+            hitNormal = hit.normal;
+
             Unit target = hit.collider != null ? hit.collider.GetComponentInParent<Unit>() : null;
             if (target != null && target != owner)
             {
@@ -104,8 +126,63 @@ public class Weapon : MonoBehaviour
             }
         }
 
+        SpawnTracer(origin, hitPoint);
+        if (hasHit)
+            SpawnImpact(hitPoint, hitNormal);
+
         ammoInMag = Mathf.Max(0, ammoInMag - 1);
         return true;
+    }
+
+    private void SpawnMuzzleFlash()
+    {
+        if (muzzleFlashVfxPrefab == null) return;
+        Transform t = muzzle != null ? muzzle : transform;
+        GameObject go = Instantiate(muzzleFlashVfxPrefab, t.position, t.rotation);
+        AutoDestroyVfx(go);
+    }
+
+    private void SpawnTracer(Vector3 from, Vector3 to)
+    {
+        if (tracerVfxPrefab == null) return;
+        Vector3 dir = to - from;
+        Quaternion rotation = dir.sqrMagnitude > 0.0001f ? Quaternion.LookRotation(dir) : Quaternion.identity;
+        GameObject go = Instantiate(tracerVfxPrefab, from, rotation);
+        if (go.TryGetComponent(out LineRenderer lr))
+        {
+            lr.positionCount = 2;
+            lr.SetPosition(0, from);
+            lr.SetPosition(1, to);
+        }
+        AutoDestroyVfx(go);
+    }
+
+    private void SpawnImpact(Vector3 point, Vector3 normal)
+    {
+        if (impactVfxPrefab == null) return;
+        Quaternion rot = normal.sqrMagnitude > 0.0001f ? Quaternion.LookRotation(normal) : Quaternion.identity;
+        GameObject go = Instantiate(impactVfxPrefab, point, rot);
+        AutoDestroyVfx(go);
+    }
+
+    private void DoCameraShake()
+    {
+        if (fireShakeDuration <= 0f || fireShakeMagnitude <= 0f) return;
+        if (CameraShake.Instance == null) return;
+        CameraShake.Instance.Shake(fireShakeDuration, fireShakeMagnitude);
+    }
+
+    private static void AutoDestroyVfx(GameObject go)
+    {
+        if (go == null) return;
+        float ttl = 2.5f;
+        ParticleSystem ps = go.GetComponentInChildren<ParticleSystem>();
+        if (ps != null)
+        {
+            var main = ps.main;
+            ttl = Mathf.Max(0.1f, main.duration + main.startLifetime.constantMax);
+        }
+        Destroy(go, ttl);
     }
 
     /// <summary>Утилита: подобрать origin на NavMesh/с поверхности, если нужно.</summary>

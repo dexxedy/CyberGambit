@@ -110,7 +110,7 @@ public class GameManager : MonoBehaviour
     /// <summary> Пересчитывает направление «вперёд» по средним позициям игроков на сетке. </summary>
     private void ApplyForwardDirectionsFromUnitPositions()
     {
-        Unit[] allUnits = FindObjectsByType<Unit>(FindObjectsSortMode.None);
+        Unit[] allUnits = FindObjectsByType<Unit>(FindObjectsInactive.Exclude);
         if (allUnits == null || allUnits.Length == 0 || ChessGrid.Instance == null) return;
 
         Vector2 sum1 = Vector2.zero;
@@ -367,7 +367,7 @@ public class GameManager : MonoBehaviour
         }
         
         // Обновляем эффекты способностей всех юнитов при смене хода
-        Unit[] allUnits = FindObjectsByType<Unit>(FindObjectsSortMode.None);
+        Unit[] allUnits = FindObjectsByType<Unit>(FindObjectsInactive.Exclude);
         foreach (Unit unit in allUnits)
         {
             if (unit != null)

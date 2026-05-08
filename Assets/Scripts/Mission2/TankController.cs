@@ -21,8 +21,24 @@ namespace Mission2
         [SerializeField] private Transform muzzle;
         [SerializeField] private LayerMask losMask = ~0;
 
+        [Header("Player Manual Fire")]
+        [Tooltip("Если включено — игрок может стрелять из танка вручную (ЛКМ).")]
+        [SerializeField] private bool allowPlayerManualFire = true;
+        [Tooltip("Если включено — автo-огонь работает только у бота, а игрок стреляет сам.")]
+        [SerializeField] private bool autoFireOnlyForBot = true;
+
         [Header("Debug")]
         [SerializeField] private bool debugDraw = false;
+
+        [Header("VFX")]
+        [SerializeField] private GameObject muzzleFlashVfxPrefab;
+        [SerializeField] private GameObject tracerVfxPrefab;
+        [SerializeField] private GameObject impactVfxPrefab;
+        [Tooltip("Какие слои считаем 'поверхностями' для попадания/трассера. Если не трогать — будет Everything.")]
+        [SerializeField] private LayerMask vfxRayMask = ~0;
+        [Header("Camera shake (optional)")]
+        [SerializeField] private float fireShakeDuration = 0.1f;
+        [SerializeField] private float fireShakeMagnitude = 0.05f;
 
         private Unit unit;
         private CharacterController characterController;
@@ -50,9 +66,21 @@ namespace Mission2
 
             // Tank is controlled like a normal unit in action mode.
             // Movement and move budget are handled by Unit; TankController only auto-fires at objectives.
-            if (isMyTurn && isSelected && actionMode && autoFireEnabled)
+            if (isMyTurn && isSelected && actionMode)
             {
-                TickAutoFire();
+                bool botControlled =
+                    (GameManager.Instance.GetGameMode() == GameMode.PlayerVsBot) &&
+                    (unit.owner == Player.Player2);
+
+                if (allowPlayerManualFire && !botControlled)
+                {
+                    TickManualFire();
+                }
+
+                if (autoFireEnabled && (!autoFireOnlyForBot || botControlled))
+                {
+                    TickAutoFire();
+                }
             }
         }
 
@@ -135,6 +163,10 @@ namespace Mission2
 
             // Fire!
             target.ApplyDamage(damagePerShot);
+            SpawnMuzzleFlash(origin, Quaternion.LookRotation(dir));
+            SpawnTracer(origin, aimPoint);
+            SpawnImpact(aimPoint, -dir);
+            DoCameraShake();
             nextFireTime = Time.time + Mathf.Max(0.05f, fireCooldownSeconds);
 
             if (debugDraw)
@@ -143,9 +175,121 @@ namespace Mission2
             }
         }
 
+        private void TickManualFire()
+        {
+            if (Time.time < nextFireTime) return;
+            if (UnityEngine.InputSystem.Mouse.current == null) return;
+            if (!UnityEngine.InputSystem.Mouse.current.leftButton.wasPressedThisFrame) return;
+
+            Camera actionCam = CameraManager.Instance != null ? CameraManager.Instance.GetActionCamera() : null;
+            Vector3 origin = muzzle != null
+                ? muzzle.position
+                : (actionCam != null ? actionCam.transform.position : (transform.position + Vector3.up * 1.5f));
+            Vector3 dir = actionCam != null ? actionCam.transform.forward : transform.forward;
+
+            float maxRange = Mathf.Max(0.1f, fireRange);
+
+            // Raycast "по миру" для видимого попадания в любую поверхность.
+            LayerMask rayMask = vfxRayMask.value != 0 ? vfxRayMask : ~0;
+            if (Physics.Raycast(origin, dir, out RaycastHit hit, maxRange, rayMask, QueryTriggerInteraction.Ignore))
+            {
+                DestructibleObjective obj = hit.collider != null ? hit.collider.GetComponentInParent<DestructibleObjective>() : null;
+                if (obj != null && !obj.IsDestroyed)
+                {
+                    obj.ApplyDamage(damagePerShot);
+                    SpawnMuzzleFlash(origin, Quaternion.LookRotation(dir));
+                    SpawnTracer(origin, hit.point);
+                    SpawnImpact(hit.point, hit.normal);
+                    DoCameraShake();
+
+                    if (debugDraw)
+                    {
+                        Debug.DrawLine(origin, hit.point, Color.yellow, 0.2f);
+                    }
+                }
+                else if (debugDraw)
+                {
+                    Debug.DrawLine(origin, hit.point, Color.gray, 0.2f);
+                }
+
+                // Даже если это НЕ objective — всё равно показываем попадание по поверхности.
+                if (obj == null || obj.IsDestroyed)
+                {
+                    SpawnMuzzleFlash(origin, Quaternion.LookRotation(dir));
+                    SpawnTracer(origin, hit.point);
+                    SpawnImpact(hit.point, hit.normal);
+                    DoCameraShake();
+                }
+            }
+            else if (debugDraw)
+            {
+                Debug.DrawLine(origin, origin + dir * maxRange, Color.gray, 0.2f);
+            }
+            else
+            {
+                // Miss tracer for feedback
+                SpawnMuzzleFlash(origin, Quaternion.LookRotation(dir));
+                SpawnTracer(origin, origin + dir * maxRange);
+                DoCameraShake();
+            }
+
+            // Важно: выстрел НЕ завершает ход. Ход завершится по таймеру/бюджету перемещения, как обычно.
+            nextFireTime = Time.time + Mathf.Max(0.05f, fireCooldownSeconds);
+        }
+
+        private void SpawnMuzzleFlash(Vector3 pos, Quaternion rot)
+        {
+            if (muzzleFlashVfxPrefab == null) return;
+            GameObject go = Instantiate(muzzleFlashVfxPrefab, pos, rot);
+            AutoDestroyVfx(go);
+        }
+
+        private void SpawnTracer(Vector3 from, Vector3 to)
+        {
+            if (tracerVfxPrefab == null) return;
+            Vector3 dir = to - from;
+            Quaternion rotation = dir.sqrMagnitude > 0.0001f ? Quaternion.LookRotation(dir) : Quaternion.identity;
+            GameObject go = Instantiate(tracerVfxPrefab, from, rotation);
+            if (go.TryGetComponent(out LineRenderer lr))
+            {
+                lr.positionCount = 2;
+                lr.SetPosition(0, from);
+                lr.SetPosition(1, to);
+            }
+            AutoDestroyVfx(go);
+        }
+
+        private void SpawnImpact(Vector3 point, Vector3 normal)
+        {
+            if (impactVfxPrefab == null) return;
+            Quaternion rot = normal.sqrMagnitude > 0.0001f ? Quaternion.LookRotation(normal) : Quaternion.identity;
+            GameObject go = Instantiate(impactVfxPrefab, point, rot);
+            AutoDestroyVfx(go);
+        }
+
+        private void DoCameraShake()
+        {
+            if (fireShakeDuration <= 0f || fireShakeMagnitude <= 0f) return;
+            if (CameraShake.Instance == null) return;
+            CameraShake.Instance.Shake(fireShakeDuration, fireShakeMagnitude);
+        }
+
+        private static void AutoDestroyVfx(GameObject go)
+        {
+            if (go == null) return;
+            float ttl = 2.5f;
+            ParticleSystem ps = go.GetComponentInChildren<ParticleSystem>();
+            if (ps != null)
+            {
+                var main = ps.main;
+                ttl = Mathf.Max(0.1f, main.duration + main.startLifetime.constantMax);
+            }
+            Destroy(go, ttl);
+        }
+
         private DestructibleObjective FindBestVisibleObjective()
         {
-            DestructibleObjective[] all = FindObjectsByType<DestructibleObjective>(FindObjectsSortMode.None);
+            DestructibleObjective[] all = FindObjectsByType<DestructibleObjective>(FindObjectsInactive.Exclude);
             if (all == null || all.Length == 0) return null;
 
             Vector3 origin = muzzle != null ? muzzle.position : (transform.position + Vector3.up * 1.5f);

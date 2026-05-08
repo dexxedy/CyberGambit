@@ -8,6 +8,11 @@ public class WeaponCollider : MonoBehaviour
     
     [Header("Combat Sounds")]
     [SerializeField] private AudioClip weaponHitSound; // Звук удара оружием
+
+    [Header("VFX")]
+    [SerializeField] private GameObject swordHitVfxPrefab;
+    [SerializeField] private float hitShakeDuration = 0.08f;
+    [SerializeField] private float hitShakeMagnitude = 0.03f;
     
     // Отслеживаем цели, которые уже были поражены в текущем контакте
     private HashSet<Collider> targetsHitInContact = new HashSet<Collider>(); 
@@ -71,6 +76,10 @@ public class WeaponCollider : MonoBehaviour
             
             // Воспроизводим звук удара оружием
             PlayWeaponHitSound();
+
+            // VFX попадания мечом (по точке контакта)
+            SpawnSwordHitVfx(other);
+            DoCameraShake();
             
             // Наносим урон цели, передавая атакующего для отражения урона (Слон)
             target.TakeDamage(finalDamage, ownerUnit);
@@ -78,6 +87,36 @@ public class WeaponCollider : MonoBehaviour
             // Запоминаем цель, чтобы не ударить дважды
             targetsHitInContact.Add(other);
         }
+    }
+
+    private void SpawnSwordHitVfx(Collider other)
+    {
+        if (swordHitVfxPrefab == null) return;
+        if (other == null) return;
+        Vector3 p = other.ClosestPoint(transform.position);
+        Quaternion rot = ownerUnit != null ? Quaternion.LookRotation(ownerUnit.transform.forward) : Quaternion.identity;
+        GameObject go = Instantiate(swordHitVfxPrefab, p, rot);
+        AutoDestroyVfx(go);
+    }
+
+    private void DoCameraShake()
+    {
+        if (hitShakeDuration <= 0f || hitShakeMagnitude <= 0f) return;
+        if (CameraShake.Instance == null) return;
+        CameraShake.Instance.Shake(hitShakeDuration, hitShakeMagnitude);
+    }
+
+    private static void AutoDestroyVfx(GameObject go)
+    {
+        if (go == null) return;
+        float ttl = 2.5f;
+        ParticleSystem ps = go.GetComponentInChildren<ParticleSystem>();
+        if (ps != null)
+        {
+            var main = ps.main;
+            ttl = Mathf.Max(0.1f, main.duration + main.startLifetime.constantMax);
+        }
+        Destroy(go, ttl);
     }
     
     // Очищаем список целей, когда они выходят из триггера

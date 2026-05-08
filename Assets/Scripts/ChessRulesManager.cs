@@ -43,7 +43,7 @@ public class ChessRulesManager : MonoBehaviour
 
     private void InitializeBoard()
     {
-        Unit[] foundUnits = FindObjectsByType<Unit>(FindObjectsSortMode.None);
+        Unit[] foundUnits = FindObjectsByType<Unit>(FindObjectsInactive.Exclude);
 
         foreach (var unit in foundUnits)
         {

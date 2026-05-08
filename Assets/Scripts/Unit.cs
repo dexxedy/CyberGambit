@@ -330,7 +330,13 @@ public class Unit : MonoBehaviour
             direction = transform.forward;
         }
 
-        equippedWeapon.TryFire(this, origin, direction);
+        if (equippedWeapon.TryFire(this, origin, direction))
+        {
+            if (animator != null)
+            {
+                animator.SetTrigger("Shoot");
+            }
+        }
     }
 
     public void EquipWeapon(Weapon weaponInstance)
@@ -349,6 +355,13 @@ public class Unit : MonoBehaviour
         equippedWeapon.transform.localPosition = Vector3.zero;
         equippedWeapon.transform.localRotation = Quaternion.identity;
         equippedWeapon.InitializeFromConfigIfNeeded();
+
+        // Refresh IK Grips
+        HandIKController ik = GetComponent<HandIKController>();
+        if (ik != null)
+        {
+            ik.RefreshGrips(equippedWeapon.transform);
+        }
     }
 
     public void EquipWeaponPrefab(Weapon weaponPrefab)
@@ -1040,7 +1053,7 @@ public class Unit : MonoBehaviour
     /// <returns>Ближайший вражеский юнит или null, если не найден</returns>
     public Unit GetNearestEnemy()
     {
-        Unit[] allUnits = FindObjectsByType<Unit>(FindObjectsSortMode.None);
+        Unit[] allUnits = FindObjectsByType<Unit>(FindObjectsInactive.Exclude);
         Unit nearestEnemy = null;
         float nearestDistance = float.MaxValue;
         

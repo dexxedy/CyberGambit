@@ -47,8 +47,14 @@ public class TacticalWorldIconsController : MonoBehaviour
         if (!IsConfigured())
             return;
 
-        if (iconsRoot != null)
-            iconsRoot.gameObject.SetActive(tactical);
+        // В фазе расстановки армии иконки не показываем — игрок видит модели юнитов.
+        if (GameManager.Instance != null && GameManager.Instance.IsArmyDeploymentPhase())
+        {
+            if (iconsRoot != null) iconsRoot.gameObject.SetActive(false);
+            return;
+        }
+
+        if (iconsRoot != null) iconsRoot.gameObject.SetActive(tactical);
 
         if (!tactical)
             return;
@@ -62,7 +68,7 @@ public class TacticalWorldIconsController : MonoBehaviour
 
     private void SyncIconsWithLivingUnits()
     {
-        Unit[] all = FindObjectsByType<Unit>(FindObjectsSortMode.None);
+        Unit[] all = FindObjectsByType<Unit>(FindObjectsInactive.Exclude);
         HashSet<Unit> alive = new HashSet<Unit>();
 
         foreach (Unit u in all)
@@ -115,6 +121,7 @@ public class TacticalWorldIconsController : MonoBehaviour
 
     private void UpdateIconScreenPositions(Camera tacCam)
     {
+        bool deployment = GameManager.Instance != null && GameManager.Instance.IsArmyDeploymentPhase();
         foreach (var kv in icons)
         {
             Unit unit = kv.Key;
@@ -135,7 +142,18 @@ public class TacticalWorldIconsController : MonoBehaviour
             RectTransform rt = icon.transform as RectTransform;
             if (rt == null) continue;
 
-            Vector3 world = unit.transform.position + Vector3.up * worldOffsetY;
+            Vector3 world;
+            if (deployment && ChessGrid.Instance != null)
+            {
+                // В расстановке привязываем иконку строго к центру клетки,
+                // иначе при высоких позициях юнита/пивота иконка визуально "уплывает" и перекрывает соседние клетки.
+                Vector2Int gp = unit.currentGridPosition;
+                world = ChessGrid.Instance.GridToWorldPosition(gp.x, gp.y) + Vector3.up * worldOffsetY;
+            }
+            else
+            {
+                world = unit.transform.position + Vector3.up * worldOffsetY;
+            }
             Vector3 screen = tacCam.WorldToScreenPoint(world);
 
             bool behind = hideIconsWhenBehindCamera && screen.z < 0.1f;

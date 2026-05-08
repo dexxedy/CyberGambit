@@ -37,7 +37,7 @@ public class TacticalUnitPresentation : MonoBehaviour
     /// </summary>
     public static void ApplyGlobal(bool hideBodiesForTacticalTopDown)
     {
-        TacticalUnitPresentation[] all = FindObjectsByType<TacticalUnitPresentation>(FindObjectsSortMode.None);
+        TacticalUnitPresentation[] all = FindObjectsByType<TacticalUnitPresentation>(FindObjectsInactive.Exclude);
         foreach (TacticalUnitPresentation p in all)
         {
             if (p == null) continue;

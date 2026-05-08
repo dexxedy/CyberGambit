@@ -9,6 +9,7 @@ namespace Mission2
         [SerializeField] private int currentHealth = 200;
 
         [Header("Optional")]
+        [SerializeField] private GameObject hitVfxPrefab;
         [SerializeField] private GameObject destroyedVfxPrefab;
         [SerializeField] private bool destroyGameObjectOnDeath = false;
 
@@ -30,6 +31,10 @@ namespace Mission2
             if (dmg == 0) return;
 
             currentHealth = Mathf.Clamp(currentHealth - dmg, 0, MaxHealth);
+            if (!IsDestroyed && hitVfxPrefab != null)
+            {
+                Instantiate(hitVfxPrefab, transform.position, transform.rotation);
+            }
             if (currentHealth <= 0)
             {
                 HandleDestroyed();

@@ -64,7 +64,7 @@ public class GridHighlighter : MonoBehaviour
     
     private bool IsCellOccupied(Vector2Int gridPos, Unit excludeUnit)
     {
-        Unit[] allUnits = FindObjectsByType<Unit>(FindObjectsSortMode.None);
+        Unit[] allUnits = FindObjectsByType<Unit>(FindObjectsInactive.Exclude);
         foreach (var u in allUnits)
         {
             if (u == null || u == excludeUnit) continue;

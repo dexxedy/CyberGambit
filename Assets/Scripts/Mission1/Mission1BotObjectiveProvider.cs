@@ -29,7 +29,7 @@ public class Mission1BotObjectiveProvider : MonoBehaviour
         if (flags == null) flags = new List<Mission1FlagZone>(3);
         flags.Clear();
 
-        Mission1FlagZone[] found = FindObjectsByType<Mission1FlagZone>(FindObjectsSortMode.None);
+        Mission1FlagZone[] found = FindObjectsByType<Mission1FlagZone>(FindObjectsInactive.Exclude);
         if (found == null) return;
 
         foreach (Mission1FlagZone f in found.OrderBy(x => x.FlagIndex))
@@ -47,7 +47,7 @@ public class Mission1BotObjectiveProvider : MonoBehaviour
 
         int playerOwnedCount = flags.Count(f => f != null && f.CurrentOwner == Mission1FlagZone.FlagOwner.Player1);
 
-        Unit[] allUnits = FindObjectsByType<Unit>(FindObjectsSortMode.None);
+        Unit[] allUnits = FindObjectsByType<Unit>(FindObjectsInactive.Exclude);
         List<Unit> botUnits = allUnits
             .Where(u => u != null && u.owner == botOwner && u.GetHealth() > 0)
             .ToList();

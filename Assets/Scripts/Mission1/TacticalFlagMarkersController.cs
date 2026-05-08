@@ -42,7 +42,7 @@ public class TacticalFlagMarkersController : MonoBehaviour
 
     private void SyncFlags()
     {
-        Mission1FlagZone[] flags = FindObjectsByType<Mission1FlagZone>(FindObjectsSortMode.None);
+        Mission1FlagZone[] flags = FindObjectsByType<Mission1FlagZone>(FindObjectsInactive.Exclude);
         if (flags == null) flags = new Mission1FlagZone[0];
 
         // Создать маркеры для новых флагов

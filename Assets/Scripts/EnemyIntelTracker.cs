@@ -86,7 +86,7 @@ public class EnemyIntelTracker : MonoBehaviour
         float half = Mathf.Max(1f, spotFovDegrees) * 0.5f;
         float range = Mathf.Max(0.1f, spotRangeMeters);
 
-        Unit[] allUnits = FindObjectsByType<Unit>(FindObjectsSortMode.None);
+        Unit[] allUnits = FindObjectsByType<Unit>(FindObjectsInactive.Exclude);
         foreach (Unit enemy in allUnits)
         {
             if (enemy == null) continue;

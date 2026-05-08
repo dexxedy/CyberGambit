@@ -47,6 +47,10 @@ public class ArmyDeploymentController : MonoBehaviour
     [SerializeField] private bool requireAtLeastOneUnit = true;
     [SerializeField] private bool requireExactlyOneKing = true;
 
+    [Header("Spawn orientation (deployment)")]
+    [Tooltip("Поворот юнитов при размещении (Yaw вокруг Y). 0 = смотреть по +Z (вперёд), 90 = вправо, -90 = влево.")]
+    [SerializeField] private float deploymentSpawnYawDegrees = 0f;
+
     [Header("Визуал зоны размещения")]
     [SerializeField] private bool showDeploymentZoneOverlay = true;
     [SerializeField] private Color deploymentZoneColor = new Color(0.2f, 0.85f, 0.45f, 0.38f);
@@ -124,6 +128,13 @@ public class ArmyDeploymentController : MonoBehaviour
 
         EnsureEventSystemExists();
         deploymentRoot.SetActive(true);
+
+        // Камера для расстановки: строго сверху вниз.
+        if (CameraManager.Instance != null)
+            CameraManager.Instance.EnterArmyDeploymentCamera();
+
+        // В расстановке показываем модели (тела) юнитов.
+        TacticalUnitPresentation.ApplyGlobal(false);
 
         BuildCards();
         RefreshBudgetLabel();
@@ -261,7 +272,8 @@ public class ArmyDeploymentController : MonoBehaviour
         if (IsGridCellOccupied(cell)) return false;
 
         Vector3 world = ChessGrid.Instance.GridToWorldPosition(cell.x, cell.y);
-        GameObject inst = Instantiate(offer.unitPrefab, world, Quaternion.identity);
+        Quaternion rot = Quaternion.Euler(0f, deploymentSpawnYawDegrees, 0f);
+        GameObject inst = Instantiate(offer.unitPrefab, world, rot);
         Unit unit = inst.GetComponent<Unit>();
         if (unit == null)
         {
@@ -305,7 +317,7 @@ public class ArmyDeploymentController : MonoBehaviour
 
     private bool IsGridCellOccupied(Vector2Int cell)
     {
-        Unit[] all = FindObjectsByType<Unit>(FindObjectsSortMode.None);
+        Unit[] all = FindObjectsByType<Unit>(FindObjectsInactive.Exclude);
         foreach (var u in all)
         {
             if (u == null || u.GetHealth() <= 0) continue;
@@ -354,7 +366,7 @@ public class ArmyDeploymentController : MonoBehaviour
     {
         hint = "";
 
-        Unit[] all = FindObjectsByType<Unit>(FindObjectsSortMode.None);
+        Unit[] all = FindObjectsByType<Unit>(FindObjectsInactive.Exclude);
         int p1 = 0;
         int kings = 0;
         foreach (var u in all)
@@ -398,6 +410,10 @@ public class ArmyDeploymentController : MonoBehaviour
             if (u.TryGetComponent(out DeploymentPlacedUnitMarker m))
                 m.enabled = false;
         }
+
+        // Плавно "опускаем" камеру после завершения деплоя.
+        if (CameraManager.Instance != null)
+            CameraManager.Instance.ExitArmyDeploymentCamera();
 
         GameManager.Instance.CompleteArmyDeploymentPhase();
     }
@@ -489,7 +505,7 @@ public class ArmyDeploymentController : MonoBehaviour
 
     private void EnsureEventSystemExists()
     {
-        if (FindFirstObjectByType<EventSystem>() != null) return;
+        if (FindAnyObjectByType<EventSystem>() != null) return;
         GameObject es = new GameObject("EventSystem");
         es.AddComponent<EventSystem>();
         es.AddComponent<InputSystemUIInputModule>();

@@ -27,7 +27,7 @@ public class Mission1BotBrain : MonoBehaviour, IBotMissionBrain
     public bool CanRun()
     {
         // Mission1 exists if there are flags in scene.
-        Mission1FlagZone[] flags = FindObjectsByType<Mission1FlagZone>(FindObjectsSortMode.None);
+        Mission1FlagZone[] flags = FindObjectsByType<Mission1FlagZone>(FindObjectsInactive.Exclude);
         return flags != null && flags.Length > 0 && GetComponent<Mission1BotObjectiveProvider>() != null;
     }
 
@@ -49,7 +49,7 @@ public class Mission1BotBrain : MonoBehaviour, IBotMissionBrain
         {
             if (debug)
             {
-                int count = FindObjectsByType<Mission1FlagZone>(FindObjectsSortMode.None)?.Length ?? 0;
+                int count = FindObjectsByType<Mission1FlagZone>(FindObjectsInactive.Exclude)?.Length ?? 0;
                 Debug.LogWarning($"[Mission1BotBrain] SelectTargetFlag returned null. FlagsInScene={count}");
             }
             controller.EndTurnInternal();
@@ -67,7 +67,7 @@ public class Mission1BotBrain : MonoBehaviour, IBotMissionBrain
 
     private IEnumerator ExecuteMission1Turn(BotController controller, Mission1BotObjectiveProvider provider, Mission1FlagZone targetFlag, float moveBudgetMeters)
     {
-        Unit[] allUnits = FindObjectsByType<Unit>(FindObjectsSortMode.None);
+        Unit[] allUnits = FindObjectsByType<Unit>(FindObjectsInactive.Exclude);
         var botUnits = allUnits.Where(u => u != null && u.owner == Player.Player2 && u.GetHealth() > 0).ToList();
         if (botUnits.Count == 0)
         {
@@ -133,10 +133,10 @@ public class Mission1BotBrain : MonoBehaviour, IBotMissionBrain
 
     private Unit SelectUnit(System.Collections.Generic.List<Unit> botUnits)
     {
-        var flags = FindObjectsByType<Mission1FlagZone>(FindObjectsSortMode.None);
+        var flags = FindObjectsByType<Mission1FlagZone>(FindObjectsInactive.Exclude);
         if (flags == null || flags.Length == 0) return botUnits.FirstOrDefault();
 
-        Unit[] allUnits = FindObjectsByType<Unit>(FindObjectsSortMode.None);
+        Unit[] allUnits = FindObjectsByType<Unit>(FindObjectsInactive.Exclude);
         var playerUnits = allUnits.Where(u => u != null && u.owner == Player.Player1 && u.GetHealth() > 0).ToList();
 
         float Score(Unit u)
@@ -160,10 +160,10 @@ public class Mission1BotBrain : MonoBehaviour, IBotMissionBrain
     private float UnitProximityScore(Unit u)
     {
         if (u == null) return 99999f;
-        var flags = FindObjectsByType<Mission1FlagZone>(FindObjectsSortMode.None);
+        var flags = FindObjectsByType<Mission1FlagZone>(FindObjectsInactive.Exclude);
         if (flags == null || flags.Length == 0) return 99999f;
 
-        Unit[] allUnits = FindObjectsByType<Unit>(FindObjectsSortMode.None);
+        Unit[] allUnits = FindObjectsByType<Unit>(FindObjectsInactive.Exclude);
         var playerUnits = allUnits.Where(x => x != null && x.owner == Player.Player1 && x.GetHealth() > 0).ToList();
 
         float best = float.PositiveInfinity;
@@ -183,10 +183,10 @@ public class Mission1BotBrain : MonoBehaviour, IBotMissionBrain
 
     private Vector3 ChooseMoveTarget(BotController controller, Unit botUnit, Mission1BotObjectiveProvider provider)
     {
-        var flags = FindObjectsByType<Mission1FlagZone>(FindObjectsSortMode.None);
+        var flags = FindObjectsByType<Mission1FlagZone>(FindObjectsInactive.Exclude);
         if (flags == null || flags.Length == 0) return botUnit.transform.position;
 
-        Unit[] allUnits = FindObjectsByType<Unit>(FindObjectsSortMode.None);
+        Unit[] allUnits = FindObjectsByType<Unit>(FindObjectsInactive.Exclude);
         var playerUnits = allUnits.Where(u => u != null && u.owner == Player.Player1 && u.GetHealth() > 0).ToList();
         var botUnits = allUnits.Where(u => u != null && u.owner == Player.Player2 && u.GetHealth() > 0).ToList();
 

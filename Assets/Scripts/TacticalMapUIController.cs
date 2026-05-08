@@ -143,7 +143,7 @@ public class TacticalMapUIController : MonoBehaviour
 
     public void RefreshAllIconsFromUnits()
     {
-        Unit[] allUnits = FindObjectsByType<Unit>(FindObjectsSortMode.None);
+        Unit[] allUnits = FindObjectsByType<Unit>(FindObjectsInactive.Exclude);
         HashSet<Unit> aliveUnits = new HashSet<Unit>();
 
         foreach (Unit unit in allUnits)

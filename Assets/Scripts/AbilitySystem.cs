@@ -33,7 +33,7 @@ public class AbilitySystem : MonoBehaviour
     /// </summary>
     public void RefreshUnitAbilities()
     {
-        UnitAbilities[] found = FindObjectsByType<UnitAbilities>(FindObjectsSortMode.None);
+        UnitAbilities[] found = FindObjectsByType<UnitAbilities>(FindObjectsInactive.Exclude);
         allUnitAbilities = new List<UnitAbilities>(found);
     }
     

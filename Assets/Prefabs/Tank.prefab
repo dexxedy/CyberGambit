@@ -1,5 +1,36 @@
 %YAML 1.1
 %TAG !u! tag:unity3d.com,2011:
+--- !u!1 &1598249966984949778
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 6848827855749874490}
+  m_Layer: 3
+  m_Name: muzzle_tank
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &6848827855749874490
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1598249966984949778}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0.022398949, y: 0.6065, z: 0.986}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 6373857269203158080}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &2116268753902249749
 GameObject:
   m_ObjectHideFlags: 0
@@ -67,6 +98,7 @@ Transform:
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 230772329108304330}
+  - {fileID: 6848827855749874490}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!33 &8060219575711189989
@@ -124,6 +156,7 @@ MeshRenderer:
   m_SortingLayerID: 0
   m_SortingLayer: 0
   m_SortingOrder: 0
+  m_MaskInteraction: 0
   m_AdditionalVertexStreams: {fileID: 0}
 --- !u!143 &8405295333961811007
 CharacterController:
@@ -143,13 +176,13 @@ CharacterController:
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 3
-  m_Height: 1.25
-  m_Radius: 0.64
+  m_Height: 1.12
+  m_Radius: 0.46
   m_SlopeLimit: 45
   m_StepOffset: 0.3
   m_SkinWidth: 0.08
   m_MinMoveDistance: 0.001
-  m_Center: {x: 0, y: 0.46, z: 0}
+  m_Center: {x: 0, y: 0.55, z: 0}
 --- !u!114 &4314669208449851594
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -186,7 +219,7 @@ MonoBehaviour:
   takeDamageSound: {fileID: 0}
   unitDeathSound: {fileID: 0}
   unitAudioSource: {fileID: 0}
-  unitDisplayNameOverride: 
+  unitDisplayNameOverride: Tank
   tacticalPortrait: {fileID: -1228184200, guid: a0658a6e93c43e644912dbc955591069, type: 3}
   startingWeaponPrefab: {fileID: 0}
   weaponSocket: {fileID: 0}
@@ -209,16 +242,26 @@ MonoBehaviour:
   moveSpeed: 6
   turnSpeedDegPerSec: 240
   arriveDistance: 0.35
-  autoFireEnabled: 1
+  autoFireEnabled: 0
   fireRange: 25
   fireFovDegrees: 120
   fireCooldownSeconds: 2
   damagePerShot: 50
-  muzzle: {fileID: 0}
+  muzzle: {fileID: 6848827855749874490}
   losMask:
     serializedVersion: 2
     m_Bits: 64
+  allowPlayerManualFire: 1
+  autoFireOnlyForBot: 1
   debugDraw: 1
+  muzzleFlashVfxPrefab: {fileID: 8570617819391195996, guid: e84c9d34cc06bac4aa60c88ac49fa8ad, type: 3}
+  tracerVfxPrefab: {fileID: 5877415797716960729, guid: 2f9b3c5db8049014fb59e8f84992bc7b, type: 3}
+  impactVfxPrefab: {fileID: 5006029902303117440, guid: 52495e0eab84db846ae79befb32a336f, type: 3}
+  vfxRayMask:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  fireShakeDuration: 0.1
+  fireShakeMagnitude: 0.05
 --- !u!114 &3354745101584153545
 MonoBehaviour:
   m_ObjectHideFlags: 0

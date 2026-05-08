@@ -32,6 +32,12 @@ public class CameraManager : MonoBehaviour
     [Header("Tactical Rotation (Yaw only)")]
     [SerializeField] private bool enableYawRotation = true;
     [SerializeField] private float yawRotationSpeed = 0.25f;
+    [Header("Tactical Rotation (Pitch)")]
+    [Tooltip("Если включено — в тактике можно наклонять камеру вверх/вниз (RMB + движение мыши по Y).")]
+    [SerializeField] private bool enablePitchRotation = true;
+    [SerializeField] private float pitchRotationSpeed = 0.25f;
+    [SerializeField] private float minPitchDegrees = -90f;
+    [SerializeField] private float maxPitchDegrees = 90f;
     [Header("Tactical Zoom (Mouse Wheel)")]
     [SerializeField] private bool enableZoom = true;
     [SerializeField] private float zoomSpeed = 2.0f;
@@ -57,6 +63,23 @@ public class CameraManager : MonoBehaviour
     private Coroutine followBotUnitCoroutine; // Корутина следования за юнитом бота
     private Coroutine returnCameraCoroutine; // Корутина возврата камеры
 
+    [Header("Army Deployment Camera")]
+    [Tooltip("Питч (наклон вниз) камеры в фазе расстановки армии. 90 = строго сверху вниз.")]
+    [SerializeField] private float deploymentPitchDegrees = 90f;
+    [Tooltip("Питч (наклон вниз) после нажатия «Готов» (переход к обычной тактике).")]
+    [SerializeField] private float postDeploymentPitchDegrees = 60f;
+    [Tooltip("Высота тактической камеры в фазе расстановки армии.")]
+    [SerializeField] private float deploymentCameraHeight = 35f;
+    [Tooltip("Высота тактической камеры после «Готов» (переход к обычной тактике).")]
+    [SerializeField] private float postDeploymentCameraHeight = 22f;
+    [Tooltip("Длительность плавного перехода камеры после «Готов».")]
+    [SerializeField] private float deploymentExitTransitionSeconds = 0.65f;
+
+    private Coroutine deploymentCameraCoroutine;
+    private bool deploymentCameraLockActive = false;
+    private float deploymentLockedYaw;
+    private Vector2 deploymentLockedXZ;
+
     [Header("Tactical Camera Follow")]
     [Tooltip("Если включено — при начале хода камера центрируется над последним юнитом этого игрока.")]
     [SerializeField] private bool centerTacticalCameraOnLastPlayedUnit = true;
@@ -79,6 +102,9 @@ public class CameraManager : MonoBehaviour
     [Tooltip("Если включено — в PvBot тактическая камера НЕ сбрасывается в фиксированную позицию при смене хода.")]
     [SerializeField] private bool preserveTacticalCameraInPvBot = true;
 
+    private float tacticalYawDegrees;
+    private float tacticalPitchDegrees;
+
     void Awake()
     {
         Instance = this; // Singleton
@@ -93,9 +119,27 @@ public class CameraManager : MonoBehaviour
         Cursor.visible = true;
 
         SetTacticalCameraPosition(GameManager.Instance.currentPlayer);
+
+        // Инициализируем yaw/pitch из текущей ротации камеры.
+        if (tacticalCamera != null)
+        {
+            Vector3 e = tacticalCamera.transform.rotation.eulerAngles;
+            tacticalYawDegrees = e.y;
+            // Конвертируем в диапазон [-180..180], чтобы кламп работал ожидаемо.
+            tacticalPitchDegrees = e.x > 180f ? e.x - 360f : e.x;
+            tacticalPitchDegrees = Mathf.Clamp(tacticalPitchDegrees, minPitchDegrees, maxPitchDegrees);
+        }
         
         // Инициализируем Audio Listener на тактической камере (начальное состояние)
         SwitchAudioListener(tacticalCamera, actionCamera);
+
+        // Camera shake helper: если скрипт есть в проекте — автоматически добавим его на actionCamera,
+        // чтобы VFX могли вызывать CameraShake.Instance без ручной настройки сцены.
+        if (actionCamera != null)
+        {
+            if (actionCamera.GetComponent<CameraShake>() == null)
+                actionCamera.gameObject.AddComponent<CameraShake>();
+        }
 
         // Скрываем панели статистики экшен-режима
         if (ActionModeUI.Instance != null)
@@ -118,9 +162,110 @@ public class CameraManager : MonoBehaviour
             TacticalUnitPresentation.ApplyGlobal(true);
     }
 
+    /// <summary>
+    /// В фазе расстановки армии (PvBot) камера смотрит строго вниз (90°),
+    /// чтобы игроку было удобно расставлять юнитов по клеткам.
+    /// </summary>
+    public void EnterArmyDeploymentCamera()
+    {
+        if (tacticalCamera == null) return;
+        if (isActionMode) return;
+
+        if (deploymentCameraCoroutine != null)
+        {
+            StopCoroutine(deploymentCameraCoroutine);
+            deploymentCameraCoroutine = null;
+        }
+
+        deploymentCameraLockActive = true;
+
+        Vector3 p = tacticalCamera.transform.position;
+        deploymentLockedXZ = new Vector2(p.x, p.z);
+        p.y = Mathf.Clamp(deploymentCameraHeight, minCameraHeight, maxCameraHeight);
+        p.x = deploymentLockedXZ.x;
+        p.z = deploymentLockedXZ.y;
+        tacticalCamera.transform.position = p;
+
+        deploymentLockedYaw = tacticalCamera.transform.rotation.eulerAngles.y;
+        tacticalCamera.transform.rotation = Quaternion.Euler(deploymentPitchDegrees, deploymentLockedYaw, 0f);
+
+        Debug.Log($"[CameraManager] Deployment camera ON (pitch={deploymentPitchDegrees}, height={deploymentCameraHeight})");
+    }
+
+    /// <summary>
+    /// После «Готов» камера опускается и переходит на более "игровой" угол (примерно 60° вниз).
+    /// </summary>
+    public void ExitArmyDeploymentCamera()
+    {
+        if (tacticalCamera == null) return;
+        if (isActionMode) return;
+
+        if (deploymentCameraCoroutine != null)
+            StopCoroutine(deploymentCameraCoroutine);
+        deploymentCameraCoroutine = StartCoroutine(DeploymentExitTransitionCoroutine());
+
+        Debug.Log($"[CameraManager] Deployment camera OFF -> transition (pitch={postDeploymentPitchDegrees}, height={postDeploymentCameraHeight})");
+    }
+
+    private void MaintainDeploymentCameraLock()
+    {
+        if (tacticalCamera == null) return;
+
+        // lock yaw/pitch/roll completely
+        tacticalCamera.transform.rotation = Quaternion.Euler(deploymentPitchDegrees, deploymentLockedYaw, 0f);
+
+        // lock position (XZ + height) for placement readability
+        Vector3 p = tacticalCamera.transform.position;
+        p.x = deploymentLockedXZ.x;
+        p.z = deploymentLockedXZ.y;
+        p.y = Mathf.Clamp(deploymentCameraHeight, minCameraHeight, maxCameraHeight);
+        tacticalCamera.transform.position = p;
+    }
+
+    private IEnumerator DeploymentExitTransitionCoroutine()
+    {
+        deploymentCameraLockActive = false;
+
+        Vector3 startPos = tacticalCamera.transform.position;
+        Quaternion startRot = tacticalCamera.transform.rotation;
+
+        Vector3 endPos = startPos;
+        endPos.y = Mathf.Clamp(postDeploymentCameraHeight, minCameraHeight, maxCameraHeight);
+
+        float yaw = startRot.eulerAngles.y;
+        Quaternion endRot = Quaternion.Euler(postDeploymentPitchDegrees, yaw, 0f);
+
+        float duration = Mathf.Max(0.01f, deploymentExitTransitionSeconds);
+        float t = 0f;
+        while (t < duration)
+        {
+            t += Time.deltaTime;
+            float k = Mathf.Clamp01(t / duration);
+            k = Mathf.SmoothStep(0f, 1f, k);
+            tacticalCamera.transform.position = Vector3.Lerp(startPos, endPos, k);
+            tacticalCamera.transform.rotation = Quaternion.Slerp(startRot, endRot, k);
+            yield return null;
+        }
+
+        tacticalCamera.transform.position = endPos;
+        tacticalCamera.transform.rotation = endRot;
+        deploymentCameraCoroutine = null;
+    }
+
     void Update()
     {
         if (isGameEnded) return;
+
+        if (!isActionMode && deploymentCameraLockActive && GameManager.Instance != null && GameManager.Instance.IsArmyDeploymentPhase())
+        {
+            MaintainDeploymentCameraLock();
+            // Во время расстановки армии блокируем управление тактической камерой полностью.
+            // Игрок расставляет юнитов, камера "как в редакторе": строго сверху и без движения/вращения/зума.
+            Cursor.lockState = CursorLockMode.None;
+            Cursor.visible = true;
+            return;
+        }
+
         if (Keyboard.current.escapeKey.wasPressedThisFrame)
         {
             if (GameManager.Instance.IsPaused())
@@ -416,6 +561,15 @@ public class CameraManager : MonoBehaviour
             tacticalCamera.transform.position = player2TacticalPosition;
             tacticalCamera.transform.rotation = player2TacticalRotation;
         }
+
+        // Синхронизируем yaw/pitch после любого жёсткого сэта позиции/ротации.
+        if (tacticalCamera != null)
+        {
+            Vector3 e = tacticalCamera.transform.rotation.eulerAngles;
+            tacticalYawDegrees = e.y;
+            tacticalPitchDegrees = e.x > 180f ? e.x - 360f : e.x;
+            tacticalPitchDegrees = Mathf.Clamp(tacticalPitchDegrees, minPitchDegrees, maxPitchDegrees);
+        }
     }
 
     private void RememberLastPlayedUnit(Unit unit)
@@ -439,7 +593,7 @@ public class CameraManager : MonoBehaviour
         if (!Keyboard.current[cycleFriendlyUnitsKey].wasPressedThisFrame) return;
 
         Player cp = GameManager.Instance.currentPlayer;
-        Unit[] all = FindObjectsByType<Unit>(FindObjectsSortMode.None);
+        Unit[] all = FindObjectsByType<Unit>(FindObjectsInactive.Exclude);
         var mine = new List<Unit>();
         foreach (Unit u in all)
         {
@@ -744,7 +898,7 @@ public class CameraManager : MonoBehaviour
     private void ApplyKnownBodiesVisibilityForCinematic()
     {
         // PvBot only: тела игрока (Player1) всегда, враги (Player2) только если spotted.
-        Unit[] all = FindObjectsByType<Unit>(FindObjectsSortMode.None);
+        Unit[] all = FindObjectsByType<Unit>(FindObjectsInactive.Exclude);
         foreach (Unit u in all)
         {
             if (u == null || u.GetHealth() <= 0) continue;
@@ -844,7 +998,7 @@ public class CameraManager : MonoBehaviour
         Vector3 totalMovement = (forwardXZ * moveInput.y + rightXZ * moveInput.x) * flySpeed * Time.deltaTime;
         tacticalCamera.transform.position += totalMovement;
 
-        // --- 2) Вращение только по сторонам (Yaw вокруг Y) ---
+        // --- 2) Вращение (Yaw + Pitch) ---
         if (enableYawRotation && Mouse.current != null && Mouse.current.rightButton.isPressed)
         {
             // Скрываем курсор и читаем дельту только по X
@@ -852,7 +1006,15 @@ public class CameraManager : MonoBehaviour
             Cursor.visible = false;
 
             Vector2 delta = Mouse.current.delta.ReadValue();
-            tacticalCamera.transform.Rotate(Vector3.up, delta.x * yawRotationSpeed, Space.World);
+            tacticalYawDegrees += delta.x * yawRotationSpeed;
+            if (enablePitchRotation)
+            {
+                // Инверсию можно поменять, если некомфортно.
+                tacticalPitchDegrees -= delta.y * pitchRotationSpeed;
+                tacticalPitchDegrees = Mathf.Clamp(tacticalPitchDegrees, minPitchDegrees, maxPitchDegrees);
+            }
+
+            tacticalCamera.transform.rotation = Quaternion.Euler(tacticalPitchDegrees, tacticalYawDegrees, 0f);
         }
         else if (!isActionMode)
         {

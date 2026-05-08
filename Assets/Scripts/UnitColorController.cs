@@ -10,7 +10,7 @@ public class UnitColorController : MonoBehaviour
     void Start()
     {
         // 2. Находим все юниты на сцене
-        Unit[] allUnits = FindObjectsByType<Unit>(FindObjectsSortMode.None);
+        Unit[] allUnits = FindObjectsByType<Unit>(FindObjectsInactive.Exclude);
         
         if (allUnits.Length == 0)
         {

@@ -33,7 +33,7 @@ public class Mission1CaptureManager : MonoBehaviour
         flags.Clear();
 
         // 1) пробуем найти уже существующие флаги в сцене
-        Mission1FlagZone[] found = FindObjectsByType<Mission1FlagZone>(FindObjectsSortMode.None);
+        Mission1FlagZone[] found = FindObjectsByType<Mission1FlagZone>(FindObjectsInactive.Exclude);
         if (found != null && found.Length > 0)
         {
             foreach (var f in found.OrderBy(x => x.FlagIndex))
@@ -48,7 +48,7 @@ public class Mission1CaptureManager : MonoBehaviour
         float unitWorldY = 0.5f;
         float spacing = 6f;
         Vector3 center = Vector3.zero;
-        Unit[] units = FindObjectsByType<Unit>(FindObjectsSortMode.None);
+        Unit[] units = FindObjectsByType<Unit>(FindObjectsInactive.Exclude);
         int alive = 0;
         foreach (Unit u in units)
         {
@@ -107,7 +107,7 @@ public class Mission1CaptureManager : MonoBehaviour
         bool allFlagsCapturedByPlayer =
             flags.All(f => f != null && f.IsOwnedBy(playerOwner));
 
-        Unit[] allUnits = FindObjectsByType<Unit>(FindObjectsSortMode.None);
+        Unit[] allUnits = FindObjectsByType<Unit>(FindObjectsInactive.Exclude);
 
         bool allEnemiesDead =
             !allUnits.Any(u => u != null && u.owner != playerOwner && u.GetHealth() > 0);
