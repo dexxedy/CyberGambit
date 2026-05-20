@@ -12,7 +12,7 @@ GameObject:
   - component: {fileID: 5693003211433991037}
   - component: {fileID: 3994406716737374496}
   - component: {fileID: 778782937519015869}
-  m_Layer: 0
+  m_Layer: 9
   m_Name: tripo_node_2058b512-6210-4b5c-8490-7b7c8ccb9459
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -122,7 +122,8 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 2815498844573639981}
-  m_Layer: 0
+  - component: {fileID: -1834803685251361043}
+  m_Layer: 9
   m_Name: Fence_4m 1
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -145,6 +146,26 @@ Transform:
   - {fileID: 4366922552977417573}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &-1834803685251361043
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6691624509215072147}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 1e3fdca004f2d45fe8abbed571a8abd5, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Unity.AI.Navigation::Unity.AI.Navigation.NavMeshModifier
+  m_SerializedVersion: 0
+  m_OverrideArea: 1
+  m_Area: 1
+  m_OverrideGenerateLinks: 0
+  m_GenerateLinks: 0
+  m_IgnoreFromBuild: 0
+  m_ApplyToChildren: 1
+  m_AffectedAgents: 00000000
 --- !u!1 &8856196289509835346
 GameObject:
   m_ObjectHideFlags: 0
@@ -154,7 +175,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 4366922552977417573}
-  m_Layer: 0
+  m_Layer: 9
   m_Name: scene
   m_TagString: Untagged
   m_Icon: {fileID: 0}

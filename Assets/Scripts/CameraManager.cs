@@ -1,6 +1,6 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
-using TMPro; // Для TextMeshProUGUI (таймер)
+using TMPro;
 using System.Collections;
 using System.Collections.Generic;
 using Mission2;
@@ -11,7 +11,6 @@ public class CameraManager : MonoBehaviour
     [SerializeField] private Camera tacticalCamera; // Камера вида сверху
     [SerializeField] private Camera actionCamera; // Камера от первого лица
     [SerializeField] private LayerMask unitLayer; // Слой для юнитов
-    [SerializeField] private TextMeshProUGUI timerText; // UI текст для таймера
     [SerializeField] private Vector3 player1TacticalPosition; // Позиция камеры для Player1
     [SerializeField] private Vector3 player2TacticalPosition; // Позиция камеры для Player2
     [SerializeField] private Quaternion player1TacticalRotation = Quaternion.Euler(45f, -90f, 0f); // Ротация для Player1
@@ -51,10 +50,8 @@ public class CameraManager : MonoBehaviour
     
     private Unit currentUnit; // Текущий выбранный юнит
     private bool isActionMode = false; // Флаг режима (false - тактический, true - экшен)
-    private float actionTime = 30f; // 30 секунд на ход
-    private float remainingTime; // Остаток времени
+    private bool hubExploreMode = false;
     private bool isGameEnded = false;
-    private bool isTimerPaused = false; // Флаг паузы таймера (для QTE)
     private bool isFollowingBotUnit = false; // Флаг следования камеры за юнитом бота
     private bool isReturningCamera = false; // Флаг возврата камеры на исходную позицию
     private Unit followedBotUnit; // Какой бот-юнит сейчас "в кадре"
@@ -91,19 +88,42 @@ public class CameraManager : MonoBehaviour
 
     [Header("Bot Turn Presentation")]
     [Tooltip("Если включено — камера НЕ следует за ботом. Если выключено — камера может следовать (кино-показ).")]
-    [SerializeField] private bool disableBotFollowCamera = true;
+    [SerializeField] private bool disableBotFollowCamera = false;
     
     [Tooltip("Если включено — камера мгновенно снэпается к боту (без плавного подлёта).")]
     [SerializeField] private bool snapBotFollowCameraInstantly = true;
 
-    [Tooltip("Если включено — во время кино-показа хода бота показываем 3D-модели: все юниты игрока + всех spotted-врагов.")]
+    [Tooltip("Если включено — во время кино-показа хода бота показываем 3D-модели: все юниты игрока + spotted-враги + всегда acting-бот.")]
     [SerializeField] private bool showKnownUnitsBodiesDuringBotCinematic = true;
+
+    [Header("Bot follow camera (3rd person)")]
+    [Tooltip("Высота камеры над юнитом бота (м).")]
+    [SerializeField] private float botFollowCameraHeight = 2.2f;
+    [Tooltip("Горизонтальное расстояние камеры сзади юнита по земле (м).")]
+    [SerializeField] private float botFollowCameraDistance = 4.5f;
+    [Tooltip("Высота точки взгляда на юните (м).")]
+    [SerializeField] private float botFollowLookAtHeight = 1.4f;
+    [Tooltip("SmoothDamp позиции (сек). Больше = плавнее, меньше дёрганья.")]
+    [SerializeField] private float botFollowPositionSmoothTime = 0.14f;
+    [Tooltip("Сглаживание поворота «сзади» юнита (чем больше — тем стабильнее).")]
+    [SerializeField] private float botFollowFacingSmoothSpeed = 8f;
+    [Tooltip("Сглаживание поворота камеры к цели (сек).")]
+    [SerializeField] private float botFollowRotationSmoothTime = 0.1f;
 
     [Tooltip("Если включено — в PvBot тактическая камера НЕ сбрасывается в фиксированную позицию при смене хода.")]
     [SerializeField] private bool preserveTacticalCameraInPvBot = true;
 
     private float tacticalYawDegrees;
     private float tacticalPitchDegrees;
+    private Vector3 botFollowCameraVelocity;
+    private Vector3 botFollowSmoothedBack = Vector3.back;
+    private int botFollowCinematicBodiesFrame = -1;
+
+    public void Initialize(Camera tactical, Camera action)
+    {
+        tacticalCamera = tactical;
+        actionCamera = action;
+    }
 
     void Awake()
     {
@@ -118,7 +138,8 @@ public class CameraManager : MonoBehaviour
         Cursor.lockState = CursorLockMode.None;
         Cursor.visible = true;
 
-        SetTacticalCameraPosition(GameManager.Instance.currentPlayer);
+        if (GameManager.Instance != null)
+            SetTacticalCameraPosition(GameManager.Instance.currentPlayer);
 
         // Инициализируем yaw/pitch из текущей ротации камеры.
         if (tacticalCamera != null)
@@ -133,13 +154,8 @@ public class CameraManager : MonoBehaviour
         // Инициализируем Audio Listener на тактической камере (начальное состояние)
         SwitchAudioListener(tacticalCamera, actionCamera);
 
-        // Camera shake helper: если скрипт есть в проекте — автоматически добавим его на actionCamera,
-        // чтобы VFX могли вызывать CameraShake.Instance без ручной настройки сцены.
-        if (actionCamera != null)
-        {
-            if (actionCamera.GetComponent<CameraShake>() == null)
-                actionCamera.gameObject.AddComponent<CameraShake>();
-        }
+        if (actionCamera != null && actionCamera.GetComponent<CameraShake>() == null)
+            actionCamera.gameObject.AddComponent<CameraShake>();
 
         // Скрываем панели статистики экшен-режима
         if (ActionModeUI.Instance != null)
@@ -148,14 +164,12 @@ public class CameraManager : MonoBehaviour
         }
         
         if (turnPanel != null) turnPanel.SetActive(true);
-        // Показываем "Ход: Бот" если игра против бота и сейчас ход Player2
-        if (GameManager.Instance != null && GameManager.Instance.IsBotTurn())
+        if (turnText != null && GameManager.Instance != null)
         {
-            turnText.text = "Ход: Бот";
-        }
-        else
-        {
-            turnText.text = $"Ход: {GameManager.Instance.currentPlayer}";
+            if (GameManager.Instance.IsBotTurn())
+                turnText.text = "Ход: Бот";
+            else
+                turnText.text = $"Ход: {GameManager.Instance.currentPlayer}";
         }
 
         if (TacticalWorldIconsController.Instance != null && TacticalWorldIconsController.Instance.IsConfigured())
@@ -188,6 +202,9 @@ public class CameraManager : MonoBehaviour
 
         deploymentLockedYaw = tacticalCamera.transform.rotation.eulerAngles.y;
         tacticalCamera.transform.rotation = Quaternion.Euler(deploymentPitchDegrees, deploymentLockedYaw, 0f);
+
+        if (turnPanel != null)
+            turnPanel.SetActive(false);
 
         Debug.Log($"[CameraManager] Deployment camera ON (pitch={deploymentPitchDegrees}, height={deploymentCameraHeight})");
     }
@@ -252,6 +269,59 @@ public class CameraManager : MonoBehaviour
         deploymentCameraCoroutine = null;
     }
 
+    public bool IsHubExploreMode() => hubExploreMode;
+
+    public void EnterHubExploreMode(Unit unit)
+    {
+        hubExploreMode = true;
+        
+        if (currentUnit != null)
+        {
+            currentUnit.SetControlled(false);
+        }
+
+        currentUnit = unit;
+        currentUnit.SetControlled(true);
+
+        actionCamera.transform.SetParent(unit.cameraAttachPoint);
+        actionCamera.transform.localPosition = Vector3.zero;
+        actionCamera.transform.localRotation = Quaternion.identity;
+
+        tacticalCamera.enabled = false;
+        actionCamera.enabled = true;
+        
+        SwitchAudioListener(actionCamera, tacticalCamera);
+
+        Cursor.lockState = CursorLockMode.Locked;
+        Cursor.visible = false;
+
+        isActionMode = true;
+
+        TacticalUnitPresentation.ApplyGlobal(false);
+        
+        if (turnPanel != null) turnPanel.SetActive(false);
+    }
+
+    private void LateUpdate()
+    {
+        if (!isFollowingBotUnit || followedBotUnit == null || tacticalCamera == null)
+            return;
+        if (followedBotUnit.GetHealth() <= 0)
+        {
+            ReturnTacticalCameraToOriginalPosition();
+            return;
+        }
+
+        UpdateBotFollowCameraSmooth(followedBotUnit);
+
+        if (showKnownUnitsBodiesDuringBotCinematic &&
+            botFollowCinematicBodiesFrame != Time.frameCount)
+        {
+            botFollowCinematicBodiesFrame = Time.frameCount;
+            ApplyKnownBodiesVisibilityForCinematic();
+        }
+    }
+
     void Update()
     {
         if (isGameEnded) return;
@@ -268,32 +338,39 @@ public class CameraManager : MonoBehaviour
 
         if (Keyboard.current.escapeKey.wasPressedThisFrame)
         {
-            if (GameManager.Instance.IsPaused())
-                GameManager.Instance.ResumeGame();   // если уже на паузе — снимаем её
-            else
-                GameManager.Instance.PauseGame();    // если играем — ставим на паузу
+            // Close mission selection if open
+            if (hubExploreMode && MissionSelectUI.Instance != null && MissionSelectUI.Instance.IsOpen)
+            {
+                MissionSelectUI.Instance.Hide();
+                return;
+            }
 
-            return; // чтобы дальше ничего не обрабатывалось в этом кадре
+            if (GameManager.Instance == null)
+                return;
+
+            if (GameManager.Instance.IsPaused())
+                GameManager.Instance.ResumeGame();
+            else
+                GameManager.Instance.PauseGame();
+
+            return;
         }
         if (isActionMode)
         {
-            // PvBot spotting: в экшене игрок "разведывает" врагов (LOS/FOV) -> миникарта/показ хода бота.
-            if (EnemyIntelTracker.Instance != null && GameManager.Instance != null &&
-                GameManager.Instance.GetGameMode() == GameMode.PlayerVsBot && currentUnit != null && actionCamera != null)
-            {
-                EnemyIntelTracker.Instance.UpdateSpottingFromAction(currentUnit, actionCamera);
-            }
+            // Туман / intel: FogOfWarManager.LateUpdate + FogWarIntelTracker.UpdateFromFog.
 
             // Обновление статистики теперь происходит в ActionModeUI.Update()
 
             if (Keyboard.current.backquoteKey.wasPressedThisFrame)
             {
+                if (hubExploreMode) return;
                 StopAllCoroutines();
                 SwitchToTacticalMode();
             }
-        }
-        else
-        {
+            }
+            else
+            {
+            if (hubExploreMode) return; // Prevent tactical movement in Hub mode if somehow triggered
             // Проверяем, является ли текущий ход ботом
             if (GameManager.Instance != null && GameManager.Instance.IsBotTurn())
             {
@@ -303,9 +380,9 @@ public class CameraManager : MonoBehaviour
                     BotController.Instance.ExecuteBotTurn();
                 }
 
-                // В PvBot игрок всё равно должен иметь возможность двигать тактическую камеру,
-                // чтобы наблюдать за траекториями/подсказками хода бота.
-                HandleTacticalCameraMovement();
+                // Пока камера в кино-режиме за ботом — не двигаем WASD (иначе дёргается с Follow).
+                if (!isFollowingBotUnit)
+                    HandleTacticalCameraMovement();
             }
             else
             {
@@ -364,68 +441,17 @@ public class CameraManager : MonoBehaviour
             AudioManager.Instance.PlayEnterActionMode();
         }
 
-        remainingTime = actionTime;
-        
-        // Показываем панели статистики через ActionModeUI
         if (ActionModeUI.Instance != null)
-        {
             ActionModeUI.Instance.ShowStatsPanels();
-        }
         
         if (turnPanel != null) turnPanel.SetActive(false);
-        StartCoroutine(ActionTimer());
     }
-
-    private IEnumerator ActionTimer()
-    {
-        while (remainingTime > 0)
-        {
-            // Таймер не уменьшается, если он на паузе (например, во время QTE)
-            if (!isTimerPaused)
-            {
-                remainingTime -= Time.deltaTime;
-            }
-            yield return null;
-        }
-        SwitchToTacticalMode();
-    }
-    
-    /// <summary>
-    /// Приостанавливает таймер хода (используется во время QTE)
-    /// </summary>
-    public void PauseTimer()
-    {
-        isTimerPaused = true;
-    }
-    
-    /// <summary>
-    /// Возобновляет таймер хода (используется после завершения QTE)
-    /// </summary>
-    public void ResumeTimer()
-    {
-        isTimerPaused = false;
-    }
-    
-    /// <summary>
-    /// Проверяет, приостановлен ли таймер
-    /// </summary>
-    public bool IsTimerPaused() => isTimerPaused;
-    
-    /// <summary>
-    /// Возвращает оставшееся время действия (для ActionModeUI)
-    /// </summary>
-    public float GetRemainingTime() => remainingTime;
 
     public void SwitchToTacticalMode()
     {
-        // Отменяем QTE, если он активен (например, если закончился таймер хода)
+        if (hubExploreMode) return;
         if (QTESystem.Instance != null && QTESystem.Instance.IsQTEActive())
-        {
             QTESystem.Instance.CancelQTE();
-        }
-        
-        // Убеждаемся, что таймер возобновлен (на случай, если QTE был активен)
-        isTimerPaused = false;
         
         if (currentUnit != null)
         {
@@ -727,20 +753,10 @@ public class CameraManager : MonoBehaviour
         }
 
         followedBotUnit = botUnit;
-        
-        // 3rd-person: камера сзади юнита бота.
-        Vector3 unitPosition = botUnit.transform.position;
+        ResetBotFollowSmoothingState(botUnit);
+        FogOfWarManager.Instance?.BeginBotSpectatorVision(botUnit);
 
-        Vector3 back = -botUnit.transform.forward;
-        back.y = 0f;
-        if (back.sqrMagnitude < 0.0001f) back = Vector3.back;
-        back.Normalize();
-
-        float height = 2.2f;
-        float distance = 4.5f;
-        Vector3 cameraPosition = unitPosition + Vector3.up * height + back * distance;
-        Vector3 lookAt = unitPosition + Vector3.up * 1.4f;
-        Quaternion cameraRotation = Quaternion.LookRotation((lookAt - cameraPosition).normalized);
+        ComputeBotFollowCameraPose(botUnit, out Vector3 cameraPosition, out Quaternion cameraRotation);
         
         // На время кино-показа в тактике показываем тела "известных" юнитов (свои + spotted враги).
         if (showKnownUnitsBodiesDuringBotCinematic)
@@ -765,7 +781,7 @@ public class CameraManager : MonoBehaviour
                 StopCoroutine(followBotUnitCoroutine);
                 followBotUnitCoroutine = null;
             }
-            followBotUnitCoroutine = StartCoroutine(FollowBotUnit(botUnit));
+            followBotUnitCoroutine = StartCoroutine(FollowBotUnitLifecycle(botUnit));
         }
         else
         {
@@ -781,18 +797,75 @@ public class CameraManager : MonoBehaviour
 
     public bool ShouldHideTacticalIconDuringCinematic(Unit unit)
     {
-        if (!isFollowingBotUnit) return false;
-        if (!showKnownUnitsBodiesDuringBotCinematic) return unit != null && unit == followedBotUnit;
-        if (unit == null) return false;
-        if (GameManager.Instance == null || GameManager.Instance.GetGameMode() != GameMode.PlayerVsBot)
-            return unit == followedBotUnit;
+        if (!isFollowingBotUnit || unit == null) return false;
 
-        // Если показываем тела "известных" юнитов — иконки им не нужны.
+        // Acting-бот: всегда 3D-модель, BF-иконка скрыта (даже без разведки).
+        if (unit == followedBotUnit) return true;
+
+        if (!showKnownUnitsBodiesDuringBotCinematic) return false;
+
+        if (GameManager.Instance == null || GameManager.Instance.GetGameMode() != GameMode.PlayerVsBot)
+            return false;
+
         if (unit.owner == Player.Player1) return true;
         if (unit.owner == Player.Player2)
-            return EnemyIntelTracker.Instance != null && EnemyIntelTracker.Instance.IsSpotted(unit);
+            return FogWarIntelTracker.Instance != null && FogWarIntelTracker.Instance.HasIntel(unit);
 
-        return unit == followedBotUnit;
+        return false;
+    }
+
+    private void ResetBotFollowSmoothingState(Unit botUnit)
+    {
+        botFollowCameraVelocity = Vector3.zero;
+        if (botUnit != null)
+        {
+            Vector3 back = -botUnit.transform.forward;
+            back.y = 0f;
+            botFollowSmoothedBack = back.sqrMagnitude > 0.0001f ? back.normalized : Vector3.back;
+        }
+        else
+            botFollowSmoothedBack = Vector3.back;
+    }
+
+    private void ComputeBotFollowCameraPose(Unit botUnit, out Vector3 cameraPosition, out Quaternion cameraRotation)
+    {
+        Vector3 unitPosition = botUnit.transform.position;
+        Vector3 back = GetSmoothedBotFollowBack(botUnit, Time.deltaTime);
+
+        cameraPosition = unitPosition + Vector3.up * botFollowCameraHeight + back * botFollowCameraDistance;
+        Vector3 lookAt = unitPosition + Vector3.up * botFollowLookAtHeight;
+        cameraRotation = Quaternion.LookRotation((lookAt - cameraPosition).normalized);
+    }
+
+    private Vector3 GetSmoothedBotFollowBack(Unit botUnit, float deltaTime)
+    {
+        Vector3 rawBack = -botUnit.transform.forward;
+        rawBack.y = 0f;
+        if (rawBack.sqrMagnitude < 0.0001f)
+            return botFollowSmoothedBack.sqrMagnitude > 0.0001f ? botFollowSmoothedBack : Vector3.back;
+
+        rawBack.Normalize();
+        float t = 1f - Mathf.Exp(-deltaTime * Mathf.Max(0.01f, botFollowFacingSmoothSpeed));
+        botFollowSmoothedBack = Vector3.Slerp(botFollowSmoothedBack, rawBack, t).normalized;
+        return botFollowSmoothedBack;
+    }
+
+    private void UpdateBotFollowCameraSmooth(Unit botUnit)
+    {
+        ComputeBotFollowCameraPose(botUnit, out Vector3 targetPosition, out Quaternion targetRotation);
+
+        float posSmooth = Mathf.Max(0.02f, botFollowPositionSmoothTime);
+        tacticalCamera.transform.position = Vector3.SmoothDamp(
+            tacticalCamera.transform.position,
+            targetPosition,
+            ref botFollowCameraVelocity,
+            posSmooth);
+
+        float rotT = 1f - Mathf.Exp(-Time.deltaTime / Mathf.Max(0.02f, botFollowRotationSmoothTime));
+        tacticalCamera.transform.rotation = Quaternion.Slerp(
+            tacticalCamera.transform.rotation,
+            targetRotation,
+            rotT);
     }
     
     /// <summary>
@@ -824,44 +897,14 @@ public class CameraManager : MonoBehaviour
         tacticalCamera.transform.rotation = targetRotation;
         
         // Начинаем следовать за юнитом бота
-        followBotUnitCoroutine = StartCoroutine(FollowBotUnit(botUnit));
+        followBotUnitCoroutine = StartCoroutine(FollowBotUnitLifecycle(botUnit));
     }
-    
-    /// <summary>
-    /// Следит за юнитом бота, обновляя позицию камеры
-    /// </summary>
-    private IEnumerator FollowBotUnit(Unit botUnit)
+
+    /// <summary>Держит флаг follow; позицию камеры обновляет LateUpdate.</summary>
+    private IEnumerator FollowBotUnitLifecycle(Unit botUnit)
     {
         while (isFollowingBotUnit && botUnit != null && botUnit.GetHealth() > 0)
-        {
-            // Обновляем позицию камеры спереди юнита бота (со стороны игрока)
-            Vector3 unitPosition = botUnit.transform.position;
-            Vector3 back = -botUnit.transform.forward;
-            back.y = 0f;
-            if (back.sqrMagnitude < 0.0001f) back = Vector3.back;
-            back.Normalize();
-
-            Vector3 cameraPosition = unitPosition + Vector3.up * 2.2f + back * 4.5f;
-            
-            // Плавно перемещаем камеру к новой позиции
-            tacticalCamera.transform.position = Vector3.Lerp(
-                tacticalCamera.transform.position, 
-                cameraPosition, 
-                Time.deltaTime * 5f // Скорость следования
-            );
-            
-            // Обновляем ротацию камеры (смотрим на юнит)
-            Vector3 lookAt = unitPosition + Vector3.up * 1.4f;
-            Vector3 directionToUnit = (lookAt - tacticalCamera.transform.position).normalized;
-            Quaternion targetRotation = Quaternion.LookRotation(directionToUnit);
-            tacticalCamera.transform.rotation = Quaternion.Lerp(
-                tacticalCamera.transform.rotation,
-                targetRotation,
-                Time.deltaTime * 5f
-            );
-            
             yield return null;
-        }
     }
     
     /// <summary>
@@ -873,6 +916,8 @@ public class CameraManager : MonoBehaviour
         
         isFollowingBotUnit = false;
         followedBotUnit = null;
+        botFollowCameraVelocity = Vector3.zero;
+        FogOfWarManager.Instance?.EndBotSpectatorVision();
 
         // Возвращаем показ моделей в тактике к глобальному правилу (обычно скрыты).
         if (TacticalWorldIconsController.Instance != null && TacticalWorldIconsController.Instance.IsConfigured())
@@ -909,7 +954,11 @@ public class CameraManager : MonoBehaviour
             if (GameManager.Instance != null && GameManager.Instance.GetGameMode() == GameMode.PlayerVsBot)
             {
                 if (u.owner == Player.Player2)
-                    visible = EnemyIntelTracker.Instance != null && EnemyIntelTracker.Instance.IsSpotted(u);
+                {
+                    visible = (isFollowingBotUnit && u == followedBotUnit) ||
+                              (FogWarIntelTracker.Instance != null &&
+                               FogWarIntelTracker.Instance.IsCurrentlyVisible(u));
+                }
             }
 
             pres.SetBodyVisualVisible(visible);

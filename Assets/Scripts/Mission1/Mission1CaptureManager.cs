@@ -9,6 +9,10 @@ public class Mission1CaptureManager : MonoBehaviour
     [SerializeField] private List<Mission1FlagZone> flags = new List<Mission1FlagZone>(3);
     [SerializeField] private Player playerOwner = Player.Player1;
 
+    [Header("Quest UI (индексы в Mission Quest Config)")]
+    [SerializeField] private int captureFlagsQuestIndex = 0;
+    [SerializeField] private int eliminateEnemiesQuestIndex = 1;
+
     [Header("Timing")]
     [SerializeField] private float checkIntervalSeconds = 0.25f;
 
@@ -115,6 +119,8 @@ public class Mission1CaptureManager : MonoBehaviour
         bool allPlayerUnitsDead =
             !allUnits.Any(u => u != null && u.owner == playerOwner && u.GetHealth() > 0);
 
+        UpdateQuestUI(allEnemiesDead);
+
         // Порядок: сначала WIN, затем LOSE
         if (allFlagsCapturedByPlayer || allEnemiesDead)
         {
@@ -126,6 +132,18 @@ public class Mission1CaptureManager : MonoBehaviour
         {
             ResolveLose();
         }
+    }
+
+    private void UpdateQuestUI(bool allEnemiesDead)
+    {
+        if (MissionQuestUI.Instance == null || flags == null)
+            return;
+
+        int captured = flags.Count(f => f != null && f.IsOwnedBy(playerOwner));
+        MissionQuestUI.Instance.SetProgress(captureFlagsQuestIndex, captured, flags.Count);
+
+        if (allEnemiesDead)
+            MissionQuestUI.Instance.Complete(eliminateEnemiesQuestIndex);
     }
 
     private void ResolveWin()

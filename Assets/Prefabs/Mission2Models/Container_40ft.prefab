@@ -9,7 +9,8 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 5736801694858956196}
-  m_Layer: 0
+  - component: {fileID: -6739073088016987160}
+  m_Layer: 9
   m_Name: Container_40ft
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -32,6 +33,26 @@ Transform:
   - {fileID: 1511928118175723910}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &-6739073088016987160
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2939984164387334391}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 1e3fdca004f2d45fe8abbed571a8abd5, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Unity.AI.Navigation::Unity.AI.Navigation.NavMeshModifier
+  m_SerializedVersion: 0
+  m_OverrideArea: 1
+  m_Area: 1
+  m_OverrideGenerateLinks: 0
+  m_GenerateLinks: 0
+  m_IgnoreFromBuild: 0
+  m_ApplyToChildren: 1
+  m_AffectedAgents: 00000000
 --- !u!1 &4188377513374112232
 GameObject:
   m_ObjectHideFlags: 0
@@ -44,7 +65,7 @@ GameObject:
   - component: {fileID: 2226220444425174815}
   - component: {fileID: 6208478225183868172}
   - component: {fileID: 7710127314655726674}
-  m_Layer: 0
+  m_Layer: 9
   m_Name: tripo_node_62544d29-cf22-48a8-8b2a-84b79ee4f937
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -154,7 +175,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 1511928118175723910}
-  m_Layer: 0
+  m_Layer: 9
   m_Name: scene
   m_TagString: Untagged
   m_Icon: {fileID: 0}

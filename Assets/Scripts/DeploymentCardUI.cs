@@ -6,7 +6,8 @@ using TMPro;
 /// <summary>
 /// Карточка юнита для фазы расстановки: перетащить на поле — спавн в клетке под курсором.
 /// </summary>
-public class DeploymentCardUI : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDragHandler
+public class DeploymentCardUI : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDragHandler,
+    IPointerEnterHandler, IPointerExitHandler
 {
     [SerializeField] private Image iconImage;
     [SerializeField] private TMP_Text titleText;
@@ -40,8 +41,23 @@ public class DeploymentCardUI : MonoBehaviour, IBeginDragHandler, IDragHandler, 
             iconImage.sprite = preview.GetTacticalPortrait();
     }
 
+    public void OnPointerEnter(PointerEventData eventData)
+    {
+        if (controller == null || GameManager.Instance == null || !GameManager.Instance.IsArmyDeploymentPhase())
+            return;
+        controller.ShowUnitInfoForOffer(offerIndex);
+    }
+
+    public void OnPointerExit(PointerEventData eventData)
+    {
+        if (controller == null) return;
+        controller.HideUnitInfoPanel();
+    }
+
     public void OnBeginDrag(PointerEventData eventData)
     {
+        controller?.HideUnitInfoPanel();
+
         if (controller == null || GameManager.Instance == null || !GameManager.Instance.IsArmyDeploymentPhase())
             return;
 

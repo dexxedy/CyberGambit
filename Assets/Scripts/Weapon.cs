@@ -7,7 +7,7 @@ using UnityEngine.AI;
 public class Weapon : MonoBehaviour
 {
     [SerializeField] private RangedWeaponConfig config;
-    [Tooltip("Точка выстрела (опционально). Если не задано — используем origin из камеры.")]
+    [Tooltip("Дуло: вспышка и старт трассера. Луч урона задаётся в TryFire (у игрока — из камеры).")]
     [SerializeField] private Transform muzzle;
 
     [Header("VFX")]
@@ -27,9 +27,11 @@ public class Weapon : MonoBehaviour
 
     private float nextFireTime;
     private float reloadEndTime;
+    /// <summary>Если в префабе не проставили muzzle — ищем по имени под иерархией оружия.</summary>
+    private Transform runtimeMuzzleCache;
 
     public RangedWeaponConfig Config => config;
-    public Transform Muzzle => muzzle;
+    public Transform Muzzle => muzzle != null ? muzzle : ResolveRuntimeMuzzle();
     public int AmmoInMag => ammoInMag;
     public int AmmoReserve => ammoReserve;
     public bool IsReloading => isReloading;
@@ -82,7 +84,8 @@ public class Weapon : MonoBehaviour
     }
 
     /// <summary>
-    /// Hitscan-выстрел. origin/direction обычно берутся из action камеры. Возвращает true, если выстрел состоялся.
+    /// Hitscan-выстрел. origin/direction — луч попадания/урона (у игрока с action-камеры).
+    /// Трассер рисуется от <see cref="muzzle"/> (если задан) до точки попадания этого луча.
     /// </summary>
     public bool TryFire(Unit owner, Vector3 origin, Vector3 direction)
     {
@@ -101,6 +104,8 @@ public class Weapon : MonoBehaviour
 
         SpawnMuzzleFlash();
         DoCameraShake();
+
+        Transform muzzleXf = Muzzle;
 
         bool hasHit = false;
         Vector3 hitPoint = origin + direction * maxRange;
@@ -126,7 +131,9 @@ public class Weapon : MonoBehaviour
             }
         }
 
-        SpawnTracer(origin, hitPoint);
+        // Визуал: луч от дула; урон — по origin/direction (у игрока это камера).
+        Vector3 tracerStart = muzzleXf != null ? muzzleXf.position : origin;
+        SpawnTracer(tracerStart, hitPoint);
         if (hasHit)
             SpawnImpact(hitPoint, hitNormal);
 
@@ -137,9 +144,27 @@ public class Weapon : MonoBehaviour
     private void SpawnMuzzleFlash()
     {
         if (muzzleFlashVfxPrefab == null) return;
-        Transform t = muzzle != null ? muzzle : transform;
+        Transform t = Muzzle != null ? Muzzle : transform;
         GameObject go = Instantiate(muzzleFlashVfxPrefab, t.position, t.rotation);
         AutoDestroyVfx(go);
+    }
+
+    private Transform ResolveRuntimeMuzzle()
+    {
+        if (runtimeMuzzleCache != null) return runtimeMuzzleCache;
+        runtimeMuzzleCache = FindChildTransformByName(transform, "muzzle")
+            ?? FindChildTransformByName(transform, "Muzzle");
+        return runtimeMuzzleCache;
+    }
+
+    private static Transform FindChildTransformByName(Transform root, string exactName)
+    {
+        if (root == null) return null;
+        foreach (Transform t in root.GetComponentsInChildren<Transform>(true))
+        {
+            if (t.name == exactName) return t;
+        }
+        return null;
     }
 
     private void SpawnTracer(Vector3 from, Vector3 to)
@@ -147,13 +172,22 @@ public class Weapon : MonoBehaviour
         if (tracerVfxPrefab == null) return;
         Vector3 dir = to - from;
         Quaternion rotation = dir.sqrMagnitude > 0.0001f ? Quaternion.LookRotation(dir) : Quaternion.identity;
-        GameObject go = Instantiate(tracerVfxPrefab, from, rotation);
+
+        // Без позиции в Instantiate: у ParticleSystem с playOnAwake первый кадр иначе может симулироваться в (0,0,0).
+        GameObject go = Instantiate(tracerVfxPrefab);
+        Transform tr = go.transform;
+        tr.SetPositionAndRotation(from, rotation);
+
         if (go.TryGetComponent(out LineRenderer lr))
         {
+            lr.useWorldSpace = true;
             lr.positionCount = 2;
             lr.SetPosition(0, from);
             lr.SetPosition(1, to);
+            AutoDestroyVfx(go, lr);
+            return;
         }
+
         AutoDestroyVfx(go);
     }
 
@@ -172,15 +206,22 @@ public class Weapon : MonoBehaviour
         CameraShake.Instance.Shake(fireShakeDuration, fireShakeMagnitude);
     }
 
-    private static void AutoDestroyVfx(GameObject go)
+    private static void AutoDestroyVfx(GameObject go, LineRenderer line = null)
     {
         if (go == null) return;
-        float ttl = 2.5f;
-        ParticleSystem ps = go.GetComponentInChildren<ParticleSystem>();
-        if (ps != null)
+        float ttl = 0.12f;
+        if (line != null)
+            ttl = 0.12f;
+        else
         {
-            var main = ps.main;
-            ttl = Mathf.Max(0.1f, main.duration + main.startLifetime.constantMax);
+            ParticleSystem ps = go.GetComponentInChildren<ParticleSystem>();
+            if (ps != null)
+            {
+                var main = ps.main;
+                ttl = Mathf.Max(0.1f, main.duration + main.startLifetime.constantMax);
+            }
+            else
+                ttl = 2.5f;
         }
         Destroy(go, ttl);
     }

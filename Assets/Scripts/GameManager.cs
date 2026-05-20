@@ -97,6 +97,10 @@ public class GameManager : MonoBehaviour
         if (!armyDeploymentPhaseActive) return;
         armyDeploymentPhaseActive = false;
         ResetDiceForNextTurn();
+        if (FogOfWarManager.Instance != null)
+            FogOfWarManager.Instance.ResetFog();
+        FogWarIntelTracker.Instance?.ResetIntel();
+        EnemyIntelTracker.Instance?.ResetIntel();
         StartCoroutine(DetectForwardDirectionsAfterInit());
     }
 
@@ -159,6 +163,13 @@ public class GameManager : MonoBehaviour
     public float GetMetersPerDicePoint() => metersPerDicePoint;
     public float ConvertDiceToMeters(int diceValue) => Mathf.Max(0, diceValue) * Mathf.Max(0f, metersPerDicePoint);
     public float GetCurrentTurnMoveBudgetMeters() => ConvertDiceToMeters(currentTurnDice);
+    public bool IsGameOver() => isGameOver;
+
+    /// <summary> Максимальное значение грани кубика (для оценки хода до броска). </summary>
+    public int GetDiceFaceMax() => Mathf.Max(diceMin, diceMax);
+
+    /// <summary> Верхняя оценка метража хода до броска (как при максимальном значении кубика). </summary>
+    public float GetMaxPossibleMoveBudgetMeters() => ConvertDiceToMeters(GetDiceFaceMax());
     
     public int RollDiceForCurrentTurn()
     {
@@ -418,6 +429,16 @@ public class GameManager : MonoBehaviour
     {
         return player == Player.Player1 ? player1Forward : player2Forward;
     }
+
+    public void InitializePauseMenu(GameObject panel, GameObject settings, GameObject buttons, Slider music, Slider sfx)
+    {
+        pausePanel = panel;
+        settingsPanel = settings;
+        pauseMenuButtons = buttons;
+        musicVolumeSlider = music;
+        sfxVolumeSlider = sfx;
+    }
+
     public bool IsPaused() => isPaused;
     
     /// <summary>

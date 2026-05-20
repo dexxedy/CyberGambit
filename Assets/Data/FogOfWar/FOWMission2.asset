@@ -1,0 +1,49 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f7a8b9c0d1e2435a6b7c8d9e0f1a2b3c, type: 3}
+  m_Name: FOWMission2
+  m_EditorClassIdentifier: Assembly-CSharp::FogOfWarSettings
+  worldMinXZ: {x: -40, y: -50}
+  worldMaxXZ: {x: 40, y: 50}
+  textureResolution: 512
+  whiteConeRangeMeters: 18
+  whiteConeFovDegrees: 107
+  nearRevealRadiusMeters: 2.5
+  fogAppearance: 0
+  fogAlbedoTexture: {fileID: 2800000, guid: e54fca0b0a5c8f74d980c34348c7e918, type: 3}
+  fogAlbedoTileX: 5.07
+  fogAlbedoTileY: 4
+  fogAlbedoTint: {r: 1, g: 1, b: 1, a: 1}
+  unexploredFogAlpha: 0.903
+  exploredFogAlpha: 0.576
+  overlayHeightY: 6.7
+  overlayScalePadding: 0.05
+  useSoftStampEdges: 1
+  stampFeatherPixels: 1
+  disableTacticalOverlayFog: 1
+  tacticalFogColor: {r: 0, g: 0, b: 0, a: 1}
+  tacticalVisibleFade: 0.12
+  disableTacticalScreenFog: 0
+  tacticalScreenFogColor: {r: 0, g: 0, b: 0, a: 1}
+  tacticalScreenUnexploredAlpha: 0.949
+  tacticalScreenExploredAlpha: 0.162
+  tacticalScreenHeightStart: 0
+  tacticalScreenHeightEnd: 200
+  tacticalScreenSkyDepthThreshold: 0.999
+  tacticalScreenVisibleFade: 25.99
+  tacticalScreenExploredFade: 0.09
+  actionFogColor: {r: 0, g: 0, b: 0, a: 1}
+  actionFogHeightStart: -1
+  actionFogHeightEnd: 79.8
+  actionSkyDepthThreshold: 0.99
+  actionVisibleFade: 0.12
+  actionExploredFade: 0.08

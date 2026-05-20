@@ -75,12 +75,12 @@ public class TacticalWorldIconsController : MonoBehaviour
         {
             if (u == null || u.GetHealth() <= 0) continue;
 
-            // PvBot fog-of-war: врагов (Player2) не показываем в тактике (BF-иконки),
-            // пока они не были замечены игроком в экшене (spotted).
+            // PvBot fog-of-war: врагов показываем только после разведки (white), last known в gray.
             if (GameManager.Instance != null && GameManager.Instance.GetGameMode() == GameMode.PlayerVsBot &&
                 u.owner == Player.Player2)
             {
-                if (EnemyIntelTracker.Instance == null || !EnemyIntelTracker.Instance.IsSpotted(u))
+                if (FogWarIntelTracker.Instance == null ||
+                    !FogWarIntelTracker.Instance.ShouldShowEnemyOnTacticalMap(u))
                     continue;
             }
 
@@ -152,7 +152,16 @@ public class TacticalWorldIconsController : MonoBehaviour
             }
             else
             {
-                world = unit.transform.position + Vector3.up * worldOffsetY;
+                Vector3 basePos = unit.transform.position;
+                if (GameManager.Instance != null && GameManager.Instance.GetGameMode() == GameMode.PlayerVsBot &&
+                    unit.owner == Player.Player2 &&
+                    FogWarIntelTracker.Instance != null &&
+                    FogWarIntelTracker.Instance.TryGetDisplayPosition(unit, out Vector3 displayPos, out _))
+                {
+                    basePos = displayPos;
+                }
+
+                world = basePos + Vector3.up * worldOffsetY;
             }
             Vector3 screen = tacCam.WorldToScreenPoint(world);
 
@@ -174,20 +183,13 @@ public class TacticalWorldIconsController : MonoBehaviour
     public void NotifyIconPointerEnter(Unit unit)
     {
         lastHoverFromIcon = unit;
-        if (TacticalModeUI.Instance != null)
-            TacticalModeUI.Instance.ShowUnitTooltipFromIcon(unit);
     }
 
     public void NotifyIconPointerExit(Unit unit)
     {
         if (lastHoverFromIcon == unit)
             lastHoverFromIcon = null;
-        if (TacticalModeUI.Instance != null)
-            TacticalModeUI.Instance.ClearIconTooltipIf(unit);
     }
 
-    public Unit GetHoveredIconUnit()
-    {
-        return lastHoverFromIcon;
-    }
+    public Unit GetHoveredIconUnit() => lastHoverFromIcon;
 }

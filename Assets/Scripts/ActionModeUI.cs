@@ -13,48 +13,46 @@ public class ActionModeUI : MonoBehaviour
     public static ActionModeUI Instance;
     
     [Header("Crosshair")]
-    [SerializeField] private Image crosshairImage; // Изображение прицела
-    [SerializeField] private Color defaultColor = Color.white; // Цвет прицела по умолчанию
-    [SerializeField] private Color enemyColor = Color.red; // Цвет прицела при наведении на врага
-    [SerializeField] private Color allyColor = Color.green; // Цвет прицела при наведении на союзника
+    [SerializeField] private Image crosshairImage;
+    [SerializeField] private Color defaultColor = Color.white;
+    [SerializeField] private Color enemyColor = Color.red;
+    [SerializeField] private Color allyColor = Color.green;
     
     [Header("Enemy Health")]
-    [SerializeField] private GameObject enemyHealthPanel; // Панель с HP врага
-    [SerializeField] private TextMeshProUGUI enemyHealthText; // Текст с HP врага
-    [SerializeField] private TextMeshProUGUI enemyNameText; // Имя врага (опционально)
+    [SerializeField] private GameObject enemyHealthPanel;
+    [SerializeField] private TextMeshProUGUI enemyHealthText;
+    [SerializeField] private TextMeshProUGUI enemyNameText;
     
     [Header("Ability Info")]
-    [SerializeField] private GameObject abilityPanel; // Панель с информацией о способности
-    [SerializeField] private TextMeshProUGUI abilityNameText; // Название способности
-    [SerializeField] private TextMeshProUGUI abilityCooldownText; // КД способности
-    [SerializeField] private TextMeshProUGUI abilityDescriptionText; // Описание способности
+    [SerializeField] private GameObject abilityPanel;
+    [SerializeField] private TextMeshProUGUI abilityNameText;
+    [SerializeField] private TextMeshProUGUI abilityCooldownText;
+    [SerializeField] private TextMeshProUGUI abilityDescriptionText;
     
     [Header("Action Mode Stats")]
-    [SerializeField] private GameObject timerPanel; // Панель с таймером
-    [SerializeField] private TextMeshProUGUI timerText; // Текст таймера
-    [SerializeField] private GameObject healthPanel; // Панель с HP
-    [SerializeField] private TextMeshProUGUI healthText; // Текст HP
-    [SerializeField] private GameObject integrityPanel; // Панель со счетчиком оставшейся дистанции
-    [SerializeField] private TextMeshProUGUI integrityText; // Текст метров
+    [SerializeField] private Slider healthSlider;
+    [SerializeField] private GameObject integrityPanel;
+    [SerializeField] private TextMeshProUGUI integrityText;
 
     [Header("Weapon / Ammo")]
-    [SerializeField] private GameObject ammoPanel; // Панель с патронами (только для юнита с оружием)
-    [SerializeField] private TextMeshProUGUI ammoText; // Например: "23/30 | 90"
-    [SerializeField] private TextMeshProUGUI reloadText; // Например: "RELOADING..."
+    [SerializeField] private GameObject ammoPanel;
+    [SerializeField] private TextMeshProUGUI ammoText;
+    [SerializeField] private TextMeshProUGUI reloadText;
     
     [Header("HUD Container")]
-    [SerializeField] private GameObject actionHUDContainer; // Родительский GameObject для всего HUD экшен-режима
+    [SerializeField] private GameObject actionHUDContainer;
     
     [Header("Settings")]
-    [SerializeField] private float raycastDistance = 50f; // Дистанция raycast
-    [SerializeField] private float updateInterval = 0.1f; // Как часто обновлять UI (в секундах)
-    [SerializeField] private Color readyColor = Color.skyBlue; // Цвет когда способность готова
-    [SerializeField] private Color cooldownColor = Color.red; // Цвет когда на КД
+    [SerializeField] private float raycastDistance = 50f;
+    [SerializeField] private float updateInterval = 0.1f;
+    [SerializeField] private Color readyColor = Color.skyBlue;
+    [SerializeField] private Color cooldownColor = Color.red;
     
     private Camera actionCamera;
-    private Unit currentTarget = null;
-    private Unit currentUnit = null;
-    private float lastUpdateTime = 0f;
+    private Unit currentTarget;
+    private Unit currentUnit;
+    private float lastUpdateTime;
+    private Transform healthPointPanel;
     
     void Awake()
     {
@@ -66,7 +64,6 @@ public class ActionModeUI : MonoBehaviour
     
     void Start()
     {
-        // Скрываем все UI по умолчанию
         if (crosshairImage != null)
             crosshairImage.gameObject.SetActive(false);
         if (enemyHealthPanel != null)
@@ -74,96 +71,146 @@ public class ActionModeUI : MonoBehaviour
         if (abilityPanel != null)
             abilityPanel.SetActive(false);
         
-        // Скрываем панели статистики по умолчанию
         HideStatsPanels();
 
         if (ammoPanel != null)
             ammoPanel.SetActive(false);
 
+        EnsureHealthBar();
         AutoBindStatsTextsIfMissing();
+    }
+
+    private void EnsureHealthBar()
+    {
+        if (actionHUDContainer == null) return;
+
+        if (healthPointPanel == null)
+        {
+            Transform found = actionHUDContainer.transform.Find("HealthPointPanel");
+            if (found != null)
+                healthPointPanel = found;
+        }
+
+        if (healthSlider == null && healthPointPanel != null)
+            healthSlider = healthPointPanel.GetComponentInChildren<Slider>(true);
+
+        if (healthSlider == null && healthPointPanel != null)
+            healthSlider = CreateHealthSlider(healthPointPanel);
+    }
+
+    private static Slider CreateHealthSlider(Transform parent)
+    {
+        var root = new GameObject("HealthSlider");
+        root.transform.SetParent(parent, false);
+        var rootRt = root.AddComponent<RectTransform>();
+        rootRt.anchorMin = new Vector2(0.05f, 0.12f);
+        rootRt.anchorMax = new Vector2(0.95f, 0.88f);
+        rootRt.offsetMin = Vector2.zero;
+        rootRt.offsetMax = Vector2.zero;
+
+        var slider = root.AddComponent<Slider>();
+        slider.transition = Selectable.Transition.None;
+        slider.interactable = false;
+        slider.minValue = 0f;
+        slider.maxValue = 1f;
+
+        var bgGo = new GameObject("Background");
+        bgGo.transform.SetParent(root.transform, false);
+        var bgRt = bgGo.AddComponent<RectTransform>();
+        StretchRect(bgRt);
+        var bgImg = bgGo.AddComponent<Image>();
+        bgImg.color = new Color(0.05f, 0.05f, 0.08f, 0.95f);
+        slider.targetGraphic = bgImg;
+
+        var fillAreaGo = new GameObject("Fill Area");
+        fillAreaGo.transform.SetParent(root.transform, false);
+        var fillAreaRt = fillAreaGo.AddComponent<RectTransform>();
+        StretchRect(fillAreaRt);
+        fillAreaRt.offsetMin = new Vector2(4f, 4f);
+        fillAreaRt.offsetMax = new Vector2(-4f, -4f);
+
+        var fillGo = new GameObject("Fill");
+        fillGo.transform.SetParent(fillAreaGo.transform, false);
+        var fillRt = fillGo.AddComponent<RectTransform>();
+        StretchRect(fillRt);
+        var fillImg = fillGo.AddComponent<Image>();
+        fillImg.color = new Color(1f, 0.22f, 0.32f, 1f);
+
+        slider.fillRect = fillRt;
+        slider.direction = Slider.Direction.LeftToRight;
+
+        return slider;
+    }
+
+    private static void StretchRect(RectTransform rt)
+    {
+        rt.anchorMin = Vector2.zero;
+        rt.anchorMax = Vector2.one;
+        rt.offsetMin = Vector2.zero;
+        rt.offsetMax = Vector2.zero;
+    }
+
+    private static void ApplyHealthSlider(Slider slider, int current, int max)
+    {
+        if (slider == null) return;
+
+        slider.minValue = 0f;
+        slider.maxValue = 1f;
+        slider.wholeNumbers = false;
+        slider.interactable = false;
+        slider.value = max > 0 ? Mathf.Clamp01((float)current / max) : 0f;
     }
 
     private void AutoBindStatsTextsIfMissing()
     {
-        // Удобный фоллбек: если забыли назначить ссылки в Inspector, пробуем найти их в дочерних объектах.
-        if (healthText == null && healthPanel != null)
-            healthText = healthPanel.GetComponentInChildren<TextMeshProUGUI>(true);
+        if (enemyHealthText == null && enemyHealthPanel != null)
+            enemyHealthText = enemyHealthPanel.GetComponentInChildren<TextMeshProUGUI>(true);
         if (integrityText == null && integrityPanel != null)
             integrityText = integrityPanel.GetComponentInChildren<TextMeshProUGUI>(true);
-        if (timerText == null && timerPanel != null)
-            timerText = timerPanel.GetComponentInChildren<TextMeshProUGUI>(true);
     }
     
     void Update()
     {
-        // Проверяем паузу - если игра на паузе, не обновляем HUD
         if (GameManager.Instance != null && GameManager.Instance.IsPaused())
-        {
             return;
-        }
         
-        // Работаем только в экшен-режиме
         if (CameraManager.Instance != null && CameraManager.Instance.IsActionMode())
         {
-            // Получаем action camera
             if (actionCamera == null)
-            {
                 actionCamera = CameraManager.Instance.GetActionCamera();
-            }
             
-            // Обновляем прицел
             UpdateCrosshair();
             
-            // Обновляем HP врага с интервалом
             if (Time.time - lastUpdateTime >= updateInterval)
             {
                 UpdateEnemyHealth();
                 lastUpdateTime = Time.time;
             }
             
-            // Обновляем информацию о способности
             UpdateAbilityInfo();
-            
-            // Обновляем статистику (таймер, HP, очки перемещения)
             UpdateStats();
         }
         else
         {
-            // Скрываем все UI в тактическом режиме
             HideAllUI();
         }
     }
     
-    /// <summary>
-    /// Обновляет прицел и его цвет
-    /// </summary>
     private void UpdateCrosshair()
     {
         if (crosshairImage == null || actionCamera == null) return;
         
-        // Показываем прицел
         if (!crosshairImage.gameObject.activeSelf)
-        {
             crosshairImage.gameObject.SetActive(true);
-        }
         
-        // Получаем юнит под прицелом
         Unit targetUnit = GetUnitUnderCrosshair();
         
-        // Обновляем цвет прицела
         if (targetUnit != null)
         {
             Unit currentControlledUnit = CameraManager.Instance.GetCurrentControlledUnit();
             if (currentControlledUnit != null)
             {
-                if (targetUnit.owner == currentControlledUnit.owner)
-                {
-                    crosshairImage.color = allyColor; // Союзник - зеленый
-                }
-                else
-                {
-                    crosshairImage.color = enemyColor; // Враг - красный
-                }
+                crosshairImage.color = targetUnit.owner == currentControlledUnit.owner ? allyColor : enemyColor;
             }
             else
             {
@@ -172,36 +219,24 @@ public class ActionModeUI : MonoBehaviour
         }
         else
         {
-            crosshairImage.color = defaultColor; // Нет цели - белый
+            crosshairImage.color = defaultColor;
         }
     }
     
-    /// <summary>
-    /// Обновляет отображение HP врага
-    /// </summary>
     private void UpdateEnemyHealth()
     {
         if (actionCamera == null || enemyHealthPanel == null) return;
         
-        // Получаем юнит под прицелом
         Unit targetUnit = GetUnitUnderCrosshair();
-        
-        // Проверяем, что это враг
         Unit currentControlledUnit = CameraManager.Instance.GetCurrentControlledUnit();
         if (targetUnit != null && currentControlledUnit != null && targetUnit.owner != currentControlledUnit.owner)
         {
-            // Это враг - показываем его HP
             if (currentTarget != targetUnit)
-            {
                 currentTarget = targetUnit;
-            }
             
             if (!enemyHealthPanel.activeSelf)
-            {
                 enemyHealthPanel.SetActive(true);
-            }
             
-            // Обновляем текст HP
             if (enemyHealthText != null)
             {
                 int currentHP = targetUnit.GetHealth();
@@ -209,26 +244,17 @@ public class ActionModeUI : MonoBehaviour
                 enemyHealthText.text = $"HP: {currentHP}/{maxHP}";
             }
             
-            // Обновляем имя юнита (если есть)
             if (enemyNameText != null)
-            {
                 enemyNameText.text = GetUnitDisplayName(targetUnit.chessType);
-            }
         }
         else
         {
-            // Нет врага под прицелом - скрываем панель
             if (enemyHealthPanel.activeSelf)
-            {
                 enemyHealthPanel.SetActive(false);
-            }
             currentTarget = null;
         }
     }
     
-    /// <summary>
-    /// Обновляет информацию о способности
-    /// </summary>
     private void UpdateAbilityInfo()
     {
         if (abilityPanel == null) return;
@@ -237,73 +263,51 @@ public class ActionModeUI : MonoBehaviour
         
         if (controlledUnit != null)
         {
-            // Если это пешка - скрываем панель способности
             if (controlledUnit.chessType == ChessUnitType.Pawn)
             {
                 if (abilityPanel.activeSelf)
-                {
                     abilityPanel.SetActive(false);
-                }
                 return;
             }
             
             if (currentUnit != controlledUnit)
-            {
                 currentUnit = controlledUnit;
-            }
             
             if (!abilityPanel.activeSelf)
-            {
                 abilityPanel.SetActive(true);
-            }
             
             UpdateAbilityDisplay(controlledUnit);
         }
         else
         {
             if (abilityPanel.activeSelf)
-            {
                 abilityPanel.SetActive(false);
-            }
             currentUnit = null;
         }
     }
     
-    /// <summary>
-    /// Обновляет отображение информации о способности
-    /// </summary>
     private void UpdateAbilityDisplay(Unit unit)
     {
         if (unit == null) return;
         
-        // Если это пешка - скрываем панель
         if (unit.chessType == ChessUnitType.Pawn)
         {
             if (abilityPanel != null && abilityPanel.activeSelf)
-            {
                 abilityPanel.SetActive(false);
-            }
             return;
         }
         
         UnitAbilities abilities = unit.GetComponent<UnitAbilities>();
         if (abilities == null)
         {
-            // У этого юнита нет способностей - скрываем панель
             if (abilityPanel != null && abilityPanel.activeSelf)
-            {
                 abilityPanel.SetActive(false);
-            }
             return;
         }
         
-        // Название способности
         if (abilityNameText != null)
-        {
             abilityNameText.text = GetAbilityName(unit.chessType);
-        }
         
-        // КД способности
         int cooldown = abilities.GetAbilityCooldown();
         bool isReady = cooldown == 0;
         
@@ -321,69 +325,41 @@ public class ActionModeUI : MonoBehaviour
             }
         }
         
-        // Описание способности
         if (abilityDescriptionText != null)
-        {
             abilityDescriptionText.text = GetAbilityDescription(unit.chessType);
-        }
     }
     
-    /// <summary>
-    /// Получает юнит под прицелом
-    /// </summary>
     private Unit GetUnitUnderCrosshair()
     {
         if (actionCamera == null) return null;
         
         Ray ray = actionCamera.ScreenPointToRay(new Vector3(Screen.width / 2f, Screen.height / 2f, 0f));
-        RaycastHit hit;
-        
-        if (Physics.Raycast(ray, out hit, raycastDistance))
+        if (Physics.Raycast(ray, out RaycastHit hit, raycastDistance))
         {
             Unit targetUnit = hit.collider.GetComponentInParent<Unit>();
             if (targetUnit == null)
-            {
                 targetUnit = hit.collider.GetComponent<Unit>();
-            }
             return targetUnit;
         }
         
         return null;
     }
     
-    /// <summary>
-    /// Обновляет статистику (таймер, HP, очки перемещения)
-    /// </summary>
     private void UpdateStats()
     {
         Unit controlledUnit = CameraManager.Instance.GetCurrentControlledUnit();
 
-        // На всякий случай (если панели/тексты подменили на сцене)
-        if ((healthText == null && healthPanel != null) ||
-            (integrityText == null && integrityPanel != null) ||
-            (timerText == null && timerPanel != null))
-        {
+        if (healthSlider == null)
+            EnsureHealthBar();
+
+        if (integrityText == null && integrityPanel != null)
             AutoBindStatsTextsIfMissing();
-        }
         
-        // Обновляем таймер
-        if (timerText != null && CameraManager.Instance != null)
-        {
-            float remainingTime = CameraManager.Instance.GetRemainingTime();
-            timerText.text = $"Осталось: {remainingTime:F1} сек";
-        }
+        if (healthSlider != null && controlledUnit != null)
+            ApplyHealthSlider(healthSlider, controlledUnit.GetHealth(), controlledUnit.GetMaxHealth());
         
-        // Обновляем HP
-        if (healthText != null && controlledUnit != null)
-        {
-            healthText.text = $"HP: {controlledUnit.GetHealth()}";
-        }
-        
-        // Обновляем оставшийся метраж
         if (integrityText != null && controlledUnit != null)
-        {
             integrityText.text = $"Дистанция: {controlledUnit.GetRemainingMoveMeters():F1} м";
-        }
 
         UpdateAmmoPanel(controlledUnit);
     }
@@ -409,36 +385,24 @@ public class ActionModeUI : MonoBehaviour
         }
 
         if (reloadText != null)
-        {
             reloadText.gameObject.SetActive(w.IsReloading);
-        }
     }
     
-    /// <summary>
-    /// Показывает панели статистики (вызывается при входе в экшен-режим)
-    /// </summary>
     public void ShowStatsPanels()
     {
-        if (timerPanel != null) timerPanel.SetActive(true);
-        if (healthPanel != null) healthPanel.SetActive(true);
+        if (healthPointPanel != null) healthPointPanel.gameObject.SetActive(true);
+        else if (healthSlider != null) healthSlider.gameObject.SetActive(true);
         if (integrityPanel != null) integrityPanel.SetActive(true);
-        // ammoPanel включается динамически в UpdateStats() только если у юнита есть оружие
     }
     
-    /// <summary>
-    /// Скрывает панели статистики (вызывается при выходе из экшен-режима)
-    /// </summary>
     public void HideStatsPanels()
     {
-        if (timerPanel != null) timerPanel.SetActive(false);
-        if (healthPanel != null) healthPanel.SetActive(false);
+        if (healthPointPanel != null) healthPointPanel.gameObject.SetActive(false);
+        else if (healthSlider != null) healthSlider.gameObject.SetActive(false);
         if (integrityPanel != null) integrityPanel.SetActive(false);
         if (ammoPanel != null) ammoPanel.SetActive(false);
     }
     
-    /// <summary>
-    /// Скрывает весь UI
-    /// </summary>
     private void HideAllUI()
     {
         if (crosshairImage != null && crosshairImage.gameObject.activeSelf)
@@ -454,9 +418,6 @@ public class ActionModeUI : MonoBehaviour
         currentUnit = null;
     }
     
-    /// <summary>
-    /// Получает отображаемое имя юнита
-    /// </summary>
     private string GetUnitDisplayName(ChessUnitType type)
     {
         switch (type)
@@ -471,9 +432,6 @@ public class ActionModeUI : MonoBehaviour
         }
     }
     
-    /// <summary>
-    /// Получает название способности
-    /// </summary>
     private string GetAbilityName(ChessUnitType type)
     {
         switch (type)
@@ -487,9 +445,6 @@ public class ActionModeUI : MonoBehaviour
         }
     }
     
-    /// <summary>
-    /// Получает описание способности
-    /// </summary>
     private string GetAbilityDescription(ChessUnitType type)
     {
         switch (type)
@@ -509,48 +464,17 @@ public class ActionModeUI : MonoBehaviour
         }
     }
     
-    /// <summary>
-    /// Получает максимальный КД для типа юнита
-    /// </summary>
-    private int GetMaxCooldown(ChessUnitType type)
-    {
-        switch (type)
-        {
-            case ChessUnitType.Horse: return 1;
-            case ChessUnitType.Bishop: return 3;
-            case ChessUnitType.Guardian: return 3;
-            case ChessUnitType.Queen: return 5;
-            case ChessUnitType.King: return 4;
-            default: return 0;
-        }
-    }
-    
-    /// <summary>
-    /// Скрывает весь HUD экшен-режима (вызывается при паузе)
-    /// </summary>
     public void HideHUD()
     {
         if (actionHUDContainer != null)
-        {
             actionHUDContainer.SetActive(false);
-        }
         else
-        {
-            // Если контейнер не назначен, скрываем все элементы вручную
             HideAllUI();
-        }
     }
     
-    /// <summary>
-    /// Показывает HUD экшен-режима (вызывается при возобновлении игры)
-    /// </summary>
     public void ShowHUD()
     {
         if (actionHUDContainer != null)
-        {
             actionHUDContainer.SetActive(true);
-        }
-        // Элементы будут показаны автоматически в Update() когда войдём в экшен-режим
     }
 }
-

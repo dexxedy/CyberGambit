@@ -4,6 +4,13 @@ using UnityEngine.AI;
 using System.Collections;
 using System;
 
+/// <summary>Роль юнита для таргетинга ИИ (танк отдельно от пехоты в PvBot / Mission2).</summary>
+public enum UnitCombatRole
+{
+    Standard = 0,
+    Tank = 1
+}
+
 public class Unit : MonoBehaviour
 {
     public static event Action<Unit, Vector2Int, Vector2Int> OnGridPositionChanged;
@@ -15,7 +22,13 @@ public class Unit : MonoBehaviour
     public ChessUnitType chessType;             // Тип фигуры (задается в Инспекторе)
     public Vector2Int currentGridPosition;      // Текущая логическая координата на доске (A1, C4, ...)
     public bool isFirstMove = true;             // Флаг для пешек или других юнитов
-    
+
+    [Header("AI / Mission targeting")]
+    [Tooltip("Tank: обычные враги PvBot не выбирают этот юнит как цель; только Guardian (ракетчик) может бить танк. Если на объекте есть Mission2.TankController, танк определяется и так.")]
+    [SerializeField] private UnitCombatRole combatRole = UnitCombatRole.Standard;
+
+    /// <summary>Танк для правил выбора цели ботом. Учитывает роль и наличие Mission2.TankController.</summary>
+    public bool IsTankUnit => combatRole == UnitCombatRole.Tank || GetComponent<Mission2.TankController>() != null;
 
     [SerializeField] private int health = 100;
     [SerializeField] private int maxHealth = 100;   // Максимальное здоровье (для хилла)
@@ -33,6 +46,13 @@ public class Unit : MonoBehaviour
     [SerializeField] private float baseMoveSpeed = 5f; // Базовая скорость, для которой анимация настроена
     [SerializeField] private float minAnimationSpeed = 0.6f; // Минимальная скорость анимации
     [SerializeField] private float maxAnimationSpeed = 1.2f; // Максимальная скорость анимации
+
+    [Header("Death")]
+    [Tooltip("Если в Animator есть такой Trigger (например Any State → Death), перед Destroy проигрывается клип смерти.")]
+    [SerializeField] private bool useDeathAnimation = true;
+    [SerializeField] private string deathAnimatorTrigger = "Die";
+    [Tooltip("Секунды до Destroy после смерти. Подгони под длину клипа Death в Animator (без loop на последнем кадре).")]
+    [SerializeField] private float deathDestroyDelaySeconds = 3f;
     
     [Header("Movement Steps (Dice)")]
     [SerializeField] private int remainingSteps = 0;
@@ -40,9 +60,20 @@ public class Unit : MonoBehaviour
     [SerializeField] private bool constrainActionMovementToNavMesh = true;
     [SerializeField] private float navMeshSampleRadius = 1.25f;
     
+    public bool hubExploreNoCombat = false;
+
     [Header("Grid Sync (Tactical Layer)")]
     [Tooltip("Если включено, юнит будет принудительно привязываться к ChessGrid в Start(). Отключи в mission1, если юниты улетают/падают.")]
     [SerializeField] private bool snapToGridOnStart = true;
+    [Tooltip("После центра клетки по XZ — луч вниз, Y ставится по коллайдеру пола/платформы (иначе GridToWorld всегда давал бы Y сетки).")]
+    [SerializeField] private bool snapRaycastDownForGroundY = true;
+    [Tooltip("На сколько метров выше max(Y сетки, текущая Y) начинается луч (чтобы не задеть свой коллайдер).")]
+    [SerializeField] private float snapGroundRaycastStartAbove = 5f;
+    [Tooltip("Максимальная длина луча вниз.")]
+    [SerializeField] private float snapGroundRaycastMaxDistance = 100f;
+    [SerializeField] private LayerMask snapGroundRaycastLayers = ~0;
+    [Tooltip("Небольшой зазор над поверхностью, чтобы не застревать в коллайдере.")]
+    [SerializeField] private float snapGroundYClearance = 0.08f;
 
     // Был ли юнит хоть раз сдвинут за всю игру (для логики "первый шаг только вперед")
     private bool hasMovedAtLeastOnce = false;
@@ -87,14 +118,15 @@ public class Unit : MonoBehaviour
     private Vector2Int lastCheckedGridPosition; // Последняя зафиксированная клетка (для списания шагов)
     private Vector3 lastCheckedCellWorldPosition; // Центр последней зафиксированной клетки
     private float xRotation = 0f;
+
     private bool isGrounded;
     private Vector2 moveInput;
     private Vector2 lookInput;
     private bool fireInput;
     private bool isControlled = false;
     private const float MinMoveBudgetEpsilon = 0.01f;
-    
-    
+
+    private bool isDeadOrDying;
     private Animator animator;
 
     void Start()
@@ -104,7 +136,6 @@ public class Unit : MonoBehaviour
         {
             return;
         }
-        animator = GetComponent<Animator>();
         if (snapToGridOnStart && ChessGrid.Instance != null)
         {
             SnapToGrid();
@@ -125,6 +156,8 @@ public class Unit : MonoBehaviour
         InitializeAudioSources();
         if (GetComponent<TacticalUnitPresentation>() == null)
             gameObject.AddComponent<TacticalUnitPresentation>();
+
+        animator = GetComponent<Animator>();
 
         // Auto-bind camera attach point if not set (prevents runtime exceptions).
         if (cameraAttachPoint == null)
@@ -201,7 +234,10 @@ public class Unit : MonoBehaviour
 
     void Update()
     {
+        if (isDeadOrDying) return;
         if (GameManager.Instance != null && GameManager.Instance.IsPaused()) return;
+        if (MissionSelectUI.Instance != null && MissionSelectUI.Instance.IsOpen) return;
+        if (controller == null) return;
         isGrounded = controller.isGrounded;
         if (isGrounded && playerVelocity.y < 0)
         {
@@ -227,39 +263,46 @@ public class Unit : MonoBehaviour
             SetCurrentGridPosition(ChessGrid.Instance.WorldToGridCoords(transform.position));
         }
 
-        Vector3 rawMove = transform.right * moveInput.x + transform.forward * moveInput.y;
-        Vector3 moveDirection = rawMove.sqrMagnitude > 0f ? rawMove.normalized : Vector3.zero;
-        float requestedDistance = moveSpeed * moveInput.magnitude * Time.deltaTime;
-        float allowedDistance = Mathf.Min(requestedDistance, remainingMoveMeters);
-        Vector3 moveVector = moveDirection * allowedDistance;
-        moveVector = ConstrainMoveVectorToNavMesh(moveVector);
-        if (moveVector.sqrMagnitude > 0f)
+        Mission2.TankController tankDrive = GetComponent<Mission2.TankController>();
+        bool tankHandledMoveLook = tankDrive != null && tankDrive.enabled &&
+            tankDrive.ApplyPlayerTankFrame(this, controller, moveInput, lookInput, moveSpeed, mouseSensitivity);
+
+        if (!tankHandledMoveLook)
         {
-            float actualDistance = moveVector.magnitude;
-            controller.Move(moveVector);
-            ConsumeMoveMeters(actualDistance);
-            if (ChessGrid.Instance != null)
+            Vector3 rawMove = transform.right * moveInput.x + transform.forward * moveInput.y;
+            Vector3 moveDirection = rawMove.sqrMagnitude > 0f ? rawMove.normalized : Vector3.zero;
+            float requestedDistance = moveSpeed * moveInput.magnitude * Time.deltaTime;
+            float allowedDistance = Mathf.Min(requestedDistance, remainingMoveMeters);
+            Vector3 moveVector = moveDirection * allowedDistance;
+            moveVector = ConstrainMoveVectorToNavMesh(moveVector);
+            if (moveVector.sqrMagnitude > 0f)
             {
-                SetCurrentGridPosition(ChessGrid.Instance.WorldToGridCoords(transform.position));
+                float actualDistance = moveVector.magnitude;
+                controller.Move(moveVector);
+                ConsumeMoveMeters(actualDistance);
+                if (ChessGrid.Instance != null)
+                {
+                    SetCurrentGridPosition(ChessGrid.Instance.WorldToGridCoords(transform.position));
+                }
             }
+
+            float mouseY = lookInput.y * mouseSensitivity;
+            xRotation -= mouseY;
+            xRotation = Mathf.Clamp(xRotation, -maxVerticalAngle, maxVerticalAngle);
+            if (cameraAttachPoint != null)
+            {
+                cameraAttachPoint.localRotation = Quaternion.Euler(xRotation, 0f, 0f);
+            }
+
+            float mouseX = lookInput.x * mouseSensitivity;
+            transform.Rotate(Vector3.up * mouseX);
         }
 
         HandleMovementSteps();
         if (!isControlled) return;
 
-        float mouseY = lookInput.y * mouseSensitivity;
-        xRotation -= mouseY;
-        xRotation = Mathf.Clamp(xRotation, -maxVerticalAngle, maxVerticalAngle);
-        if (cameraAttachPoint != null)
-        {
-            cameraAttachPoint.localRotation = Quaternion.Euler(xRotation, 0f, 0f);
-        }
-
-        float mouseX = lookInput.x * mouseSensitivity;
-        transform.Rotate(Vector3.up * mouseX);
-
         // Перезарядка оружия по R должна работать даже без выстрела.
-        if (equippedWeapon != null && equippedWeapon.Config != null)
+        if (!hubExploreNoCombat && equippedWeapon != null && equippedWeapon.Config != null)
         {
             equippedWeapon.TickReload();
             if (Keyboard.current != null && Keyboard.current.rKey.wasPressedThisFrame)
@@ -268,23 +311,26 @@ public class Unit : MonoBehaviour
             }
         }
 
-        if (fireInput)
-        {
-            fireInput = false;
-            Attack();
-        }
         if (animator != null)
         {
             float speed = moveInput.magnitude;
             animator.SetFloat("Speed", speed);
-            
-            // Синхронизируем скорость анимации с реальной скоростью движения
+
+            bool combatStance = !hubExploreNoCombat && equippedWeapon != null && Mouse.current != null && Mouse.current.rightButton.isPressed;
+            TrySetAnimatorCombat(combatStance);
+
             if (baseMoveSpeed > 0)
             {
                 float animationSpeedMultiplier = moveSpeed / baseMoveSpeed;
                 animationSpeedMultiplier = Mathf.Clamp(animationSpeedMultiplier, minAnimationSpeed, maxAnimationSpeed);
                 animator.speed = animationSpeedMultiplier;
             }
+        }
+
+        if (fireInput)
+        {
+            fireInput = false;
+            Attack();
         }
     }
 
@@ -293,6 +339,7 @@ public class Unit : MonoBehaviour
     /// </summary>
     public void Attack()
     {
+        if (hubExploreNoCombat) return;
         if (equippedWeapon != null && equippedWeapon.Config != null)
         {
             PerformEquippedWeaponFire();
@@ -321,7 +368,8 @@ public class Unit : MonoBehaviour
 
         if (actionCam != null)
         {
-            origin = equippedWeapon.Muzzle != null ? equippedWeapon.Muzzle.position : actionCam.transform.position;
+            // Hitscan и урон — строго из камеры; трассер рисуется из дула в Weapon.TryFire.
+            origin = actionCam.transform.position;
             direction = actionCam.transform.forward;
         }
         else
@@ -355,13 +403,6 @@ public class Unit : MonoBehaviour
         equippedWeapon.transform.localPosition = Vector3.zero;
         equippedWeapon.transform.localRotation = Quaternion.identity;
         equippedWeapon.InitializeFromConfigIfNeeded();
-
-        // Refresh IK Grips
-        HandIKController ik = GetComponent<HandIKController>();
-        if (ik != null)
-        {
-            ik.RefreshGrips(equippedWeapon.transform);
-        }
     }
 
     public void EquipWeaponPrefab(Weapon weaponPrefab)
@@ -407,6 +448,8 @@ public class Unit : MonoBehaviour
     /// <param name="attacker">Юнит, который наносит урон (для отражения)</param>
     public void TakeDamage(int amount, Unit attacker = null)
     {
+        if (isDeadOrDying) return;
+
         int originalAmount = amount;
         
         // Если юнит блокирует, урон полностью блокируется (0 урона)
@@ -445,30 +488,91 @@ public class Unit : MonoBehaviour
 
     private void Die()
     {
-        // Воспроизводим звук смерти перед уничтожением
+        if (isDeadOrDying) return;
+        isDeadOrDying = true;
+        health = 0;
+
         PlayDeathSound();
-        
-        if (isControlled)
+
+        if (isControlled && CameraManager.Instance != null)
         {
-            // Вызываем ForceSwitchToTacticalMode перед Destroy
             CameraManager.Instance.ForceSwitchToTacticalMode();
-            isControlled = false;
+            SetControlled(false);
         }
-        if (isKing)
+
+        if (isKing && GameManager.Instance != null)
+            GameManager.Instance.EndGame(owner);
+
+        DisableGameplayForDeath();
+
+        if (useDeathAnimation && TryPlayDeathAnimation())
         {
-            // Если умер этот юнит, значит его владелец (owner) проиграл
-            GameManager.Instance.EndGame(this.owner);
+            StartCoroutine(DestroyAfterDeathPresentation());
         }
-        
-        // Уничтожаем объект сразу, звук проиграется через PlayOneShot
+        else
+        {
+            Destroy(gameObject);
+        }
+    }
+
+    private void DisableGameplayForDeath()
+    {
+        if (controller != null)
+            controller.enabled = false;
+
+        NavMeshAgent agent = GetComponent<NavMeshAgent>();
+        if (agent != null)
+            agent.enabled = false;
+
+        Mission2.TankController tankCtrl = GetComponent<Mission2.TankController>();
+        if (tankCtrl != null)
+            tankCtrl.enabled = false;
+
+        if (isControlled)
+            SetControlled(false);
+
+        // Не отключаем сам MonoBehaviour Unit — иначе корутина Destroy не выполнится.
+    }
+
+    private bool TryPlayDeathAnimation()
+    {
+        if (animator == null)
+            animator = GetComponent<Animator>();
+        if (animator == null)
+            return false;
+        if (!AnimatorHasTriggerParameter(animator, deathAnimatorTrigger))
+            return false;
+
+        animator.speed = 1f;
+        animator.ResetTrigger(deathAnimatorTrigger);
+        animator.SetTrigger(deathAnimatorTrigger);
+        return true;
+    }
+
+    private static bool AnimatorHasTriggerParameter(Animator anim, string triggerName)
+    {
+        if (anim == null || string.IsNullOrEmpty(triggerName)) return false;
+        foreach (AnimatorControllerParameter p in anim.parameters)
+        {
+            if (p.type == AnimatorControllerParameterType.Trigger && p.name == triggerName)
+                return true;
+        }
+        return false;
+    }
+
+    private IEnumerator DestroyAfterDeathPresentation()
+    {
+        float delay = Mathf.Max(0.05f, deathDestroyDelaySeconds);
+        yield return new WaitForSeconds(delay);
         Destroy(gameObject);
     }
     public void SnapToGrid()
     {
         if (ChessGrid.Instance == null) return;
         SetCurrentGridPosition(ChessGrid.Instance.WorldToGridCoords(transform.position));
-        Vector3 snapPosition = ChessGrid.Instance.GridToWorldPosition(currentGridPosition.x, currentGridPosition.y);
-        
+        Vector3 baseSnap = ChessGrid.Instance.GridToWorldPosition(currentGridPosition.x, currentGridPosition.y);
+        Vector3 snapPosition = ApplyGroundYFromRaycast(baseSnap);
+
         if (controller != null)
         {
             controller.enabled = false;
@@ -479,6 +583,22 @@ public class Unit : MonoBehaviour
         {
             transform.position = snapPosition;
         }
+    }
+
+    private Vector3 ApplyGroundYFromRaycast(Vector3 baseSnapXZ)
+    {
+        if (!snapRaycastDownForGroundY)
+            return baseSnapXZ;
+
+        float startY = Mathf.Max(baseSnapXZ.y, transform.position.y) + Mathf.Max(0.1f, snapGroundRaycastStartAbove);
+        Vector3 rayOrigin = new Vector3(baseSnapXZ.x, startY, baseSnapXZ.z);
+        if (Physics.Raycast(rayOrigin, Vector3.down, out RaycastHit hit, snapGroundRaycastMaxDistance, snapGroundRaycastLayers, QueryTriggerInteraction.Ignore))
+        {
+            float y = hit.point.y + Mathf.Max(0f, snapGroundYClearance);
+            return new Vector3(baseSnapXZ.x, y, baseSnapXZ.z);
+        }
+
+        return new Vector3(baseSnapXZ.x, transform.position.y, baseSnapXZ.z);
     }
 
     public void SetRemainingSteps(int steps)
@@ -593,6 +713,7 @@ public class Unit : MonoBehaviour
         {
             animator.SetFloat("Speed", 0f);
             animator.speed = 1.0f; // Сбрасываем скорость анимации
+            TrySetAnimatorCombat(false);
             animator.Update(0f);
         }
         // Очищаем список пораженных целей при сбросе анимации
@@ -600,6 +721,23 @@ public class Unit : MonoBehaviour
         if (weaponCollider != null)
         {
             weaponCollider.ClearHitTargets();
+        }
+    }
+
+    /// <summary>
+    /// Выставляет bool Combat, если он есть в Animator Controller (например BishopController).
+    /// Стойка прицела: зажата ПКМ при экипированном оружии.
+    /// </summary>
+    private void TrySetAnimatorCombat(bool combatStance)
+    {
+        if (animator == null) return;
+        foreach (AnimatorControllerParameter p in animator.parameters)
+        {
+            if (p.type == AnimatorControllerParameterType.Bool && p.name == "Combat")
+            {
+                animator.SetBool("Combat", combatStance);
+                return;
+            }
         }
     }
 
@@ -623,8 +761,6 @@ public class Unit : MonoBehaviour
         }
     }
 
-    // Unit.cs
-
     public void SetControlled(bool controlled)
     {
         isControlled = controlled;
@@ -641,6 +777,10 @@ public class Unit : MonoBehaviour
         }
         else
         {
+            Mission2.TankController tankCtrl = GetComponent<Mission2.TankController>();
+            if (tankCtrl != null)
+                tankCtrl.NotifyTankControlEnded();
+
             // Сбрасываем ввод, чтобы не "залипала" анимация бега после завершения хода
             moveInput = Vector2.zero;
             lookInput = Vector2.zero;
@@ -723,6 +863,7 @@ public class Unit : MonoBehaviour
     /// <param name="amount">Количество HP для восстановления</param>
     public void Heal(int amount)
     {
+        if (isDeadOrDying) return;
         health = Mathf.Min(health + amount, maxHealth);
     }
     
@@ -1010,6 +1151,31 @@ public class Unit : MonoBehaviour
     {
         if (ChessGrid.Instance == null) return;
         SetCurrentGridPosition(ChessGrid.Instance.WorldToGridCoords(transform.position));
+    }
+
+    /// <summary>Ограничение шага движения в экшене по NavMesh (танк и др.).</summary>
+    public Vector3 ConstrainActionMoveToNavMesh(Vector3 moveVector) => ConstrainMoveVectorToNavMesh(moveVector);
+
+    /// <summary>Вертикальный наклон камеры экшена (танк вызывает вместе с наклоном ствола).</summary>
+    public void ApplyActionLookPitchDelta(float pitchDeltaDeg)
+    {
+        xRotation -= pitchDeltaDeg;
+        xRotation = Mathf.Clamp(xRotation, -maxVerticalAngle, maxVerticalAngle);
+        if (cameraAttachPoint != null)
+            cameraAttachPoint.localRotation = Quaternion.Euler(xRotation, 0f, 0f);
+    }
+
+    /// <summary>Текущий pitch камеры экшена (локальный X на cameraAttachPoint), градусы.</summary>
+    public float GetActionLookPitchDegrees() => xRotation;
+
+    /// <summary>Жёсткий clamp вертикали прицела (танк и др.), в тех же градусах, что <see cref="GetActionLookPitchDegrees"/>.</summary>
+    public void ClampActionLookPitchAbsolute(float minDeg, float maxDeg)
+    {
+        if (minDeg > maxDeg)
+            (minDeg, maxDeg) = (maxDeg, minDeg);
+        xRotation = Mathf.Clamp(xRotation, minDeg, maxDeg);
+        if (cameraAttachPoint != null)
+            cameraAttachPoint.localRotation = Quaternion.Euler(xRotation, 0f, 0f);
     }
     
     public float CalculateNavMeshPathLength(Vector3 targetWorldPos)

@@ -10,6 +10,9 @@ namespace Mission2
         [SerializeField] private List<DestructibleObjective> objectives = new List<DestructibleObjective>();
         [SerializeField] private bool autoFindObjectivesInScene = true;
 
+        [Header("Quest UI")]
+        [SerializeField] private int destroyObjectivesQuestIndex = 1;
+
         private readonly HashSet<DestructibleObjective> alive = new HashSet<DestructibleObjective>();
 
         private void Awake()
@@ -55,6 +58,7 @@ namespace Mission2
             }
 
             TryFinishIfNone();
+            UpdateQuestProgress();
         }
 
         private void Unbind()
@@ -69,7 +73,27 @@ namespace Mission2
         private void HandleObjectiveDestroyed(DestructibleObjective obj)
         {
             if (obj != null) alive.Remove(obj);
+            UpdateQuestProgress();
             TryFinishIfNone();
+        }
+
+        private void UpdateQuestProgress()
+        {
+            if (MissionQuestUI.Instance == null || objectives == null)
+                return;
+
+            int total = 0;
+            int destroyed = 0;
+            foreach (DestructibleObjective o in objectives)
+            {
+                if (o == null) continue;
+                total++;
+                if (o.IsDestroyed)
+                    destroyed++;
+            }
+
+            if (total > 0)
+                MissionQuestUI.Instance.SetProgress(destroyObjectivesQuestIndex, destroyed, total);
         }
 
         private void TryFinishIfNone()

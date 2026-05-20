@@ -13,11 +13,19 @@ namespace Mission2
         [SerializeField] private GameObject destroyedVfxPrefab;
         [SerializeField] private bool destroyGameObjectOnDeath = false;
 
+        [Header("Tactical map marker (Mission 2)")]
+        [Tooltip("Текст на тактической карте. Пусто — автоматически O1, O2, … по порядку.")]
+        [SerializeField] private string tacticalMapLabel = "";
+
         public event Action<DestructibleObjective> OnDestroyed;
 
         public int MaxHealth => Mathf.Max(1, maxHealth);
         public int CurrentHealth => Mathf.Clamp(currentHealth, 0, MaxHealth);
         public bool IsDestroyed => CurrentHealth <= 0;
+
+        /// <summary>null или пусто — контроллер подставит O1, O2…</summary>
+        public string TacticalMapLabel =>
+            string.IsNullOrWhiteSpace(tacticalMapLabel) ? null : tacticalMapLabel.Trim();
 
         private void Awake()
         {
@@ -27,6 +35,12 @@ namespace Mission2
         public void ApplyDamage(int damage)
         {
             if (IsDestroyed) return;
+            foreach (var sh in GetComponentsInChildren<Mission2ObjectiveShield>(true))
+            {
+                if (sh != null && sh.IsProtectionActive)
+                    return;
+            }
+
             int dmg = Mathf.Max(0, damage);
             if (dmg == 0) return;
 

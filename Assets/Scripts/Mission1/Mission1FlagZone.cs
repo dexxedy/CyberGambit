@@ -17,7 +17,18 @@ public class Mission1FlagZone : MonoBehaviour
     // Keep-logic: если в зоне никого нет, владелец не сбрасывается.
     [SerializeField] private FlagOwner currentOwner = FlagOwner.None;
 
+    [Header("Ground ring (optional)")]
+    [Tooltip("MeshRenderer кольца на полу (дочерний Plane/Quad). Пусто — без подсветки.")]
+    [SerializeField] private Renderer groundRingRenderer;
+    [SerializeField] private Color neutralColor = new Color(1f, 0.2f, 0.2f, 0.4f);
+    [SerializeField] private Color player1Color = new Color(0.2f, 0.6f, 1f, 0.45f);
+    [SerializeField] private Color player2Color = new Color(1f, 0.25f, 0.25f, 0.45f);
+
     private readonly HashSet<Unit> unitsInZone = new HashSet<Unit>();
+    private MaterialPropertyBlock groundRingMpb;
+    private FlagOwner lastVisualOwner = (FlagOwner)(-1);
+    private static readonly int BaseColorId = Shader.PropertyToID("_BaseColor");
+    private static readonly int ColorId = Shader.PropertyToID("_Color");
 
     public int FlagIndex => flagIndex;
     public FlagOwner CurrentOwner => currentOwner;
@@ -27,6 +38,13 @@ public class Mission1FlagZone : MonoBehaviour
         flagIndex = index;
         // Начальное состояние - "никто не владеет", пока игроки не зайдут в зону.
         currentOwner = FlagOwner.None;
+        lastVisualOwner = (FlagOwner)(-1);
+        ApplyGroundRingColor();
+    }
+
+    private void Start()
+    {
+        ApplyGroundRingColor();
     }
 
     private void Awake()
@@ -72,6 +90,37 @@ public class Mission1FlagZone : MonoBehaviour
             currentOwner = FlagOwner.Player2;
         }
         // else: keep currentOwner (keep-логика)
+
+        ApplyGroundRingColor();
+    }
+
+    private void ApplyGroundRingColor()
+    {
+        if (groundRingRenderer == null || lastVisualOwner == currentOwner)
+            return;
+
+        lastVisualOwner = currentOwner;
+        groundRingMpb ??= new MaterialPropertyBlock();
+        groundRingRenderer.GetPropertyBlock(groundRingMpb);
+
+        Color c = OwnerToRingColor(currentOwner);
+        Material mat = groundRingRenderer.sharedMaterial;
+        if (mat != null && mat.HasProperty(BaseColorId))
+            groundRingMpb.SetColor(BaseColorId, c);
+        else
+            groundRingMpb.SetColor(ColorId, c);
+
+        groundRingRenderer.SetPropertyBlock(groundRingMpb);
+    }
+
+    private Color OwnerToRingColor(FlagOwner owner)
+    {
+        switch (owner)
+        {
+            case FlagOwner.Player1: return player1Color;
+            case FlagOwner.Player2: return player2Color;
+            default: return neutralColor;
+        }
     }
 
     public bool IsOwnedBy(Player player)

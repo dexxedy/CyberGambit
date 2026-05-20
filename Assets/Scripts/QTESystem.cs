@@ -12,7 +12,7 @@ public class QTESystem : MonoBehaviour
     public static QTESystem Instance;
     
     [Header("QTE Settings")]
-    [SerializeField] private float qteWindowTime = 5.0f; // Время на реакцию игрока (в секундах)
+    [SerializeField] private float qteWindowTime = 5f; // Время на ввод последовательности (unscaled, только во время QTE)
     [SerializeField] private float enemyAttackDelay = 0.3f; // Задержка перед атакой врага (для визуального эффекта)
     [SerializeField] [Range(0f, 1f)] private float qteChance = 0.6f; // Вероятность появления QTE при атаке врага (60%)
     
@@ -75,12 +75,6 @@ public class QTESystem : MonoBehaviour
         enemyUnit = enemy;
         isQTEActive = true;
         enemyAnimator = enemy != null ? enemy.GetComponent<Animator>() : null;
-        
-        // Останавливаем таймер хода во время QTE
-        if (CameraManager.Instance != null)
-        {
-            CameraManager.Instance.PauseTimer();
-        }
         
         // Воспроизводим звук активации QTE
         if (AudioManager.Instance != null)
@@ -145,7 +139,6 @@ public class QTESystem : MonoBehaviour
         
         // 5. Ожидаем ввода игрока - нужно нажать все 3 клавиши в правильном порядке
         // Используем unscaledDeltaTime, так как timeScale = 0
-        float timer = qteWindowTime;
         QTEResult result = QTEResult.Failed;
         
         // Получаем возможности текущей фигуры
@@ -167,16 +160,17 @@ public class QTESystem : MonoBehaviour
         }
         else
         {
-            // Ожидаем последовательность клавиш (используем unscaledDeltaTime)
-            while (timer > 0f && currentKeyIndex < qteSequence.Count)
+            float timeRemaining = qteWindowTime;
+            if (QTEManager.Instance != null)
+                QTEManager.Instance.ShowTimer(qteWindowTime);
+            
+            // Ожидаем последовательность клавиш (unscaledDeltaTime — таймер работает при timeScale = 0)
+            while (currentKeyIndex < qteSequence.Count && timeRemaining > 0f)
             {
-                timer -= Time.unscaledDeltaTime;
-                
-                // Обновляем таймер в UI
                 if (QTEManager.Instance != null)
                 {
-                    QTEManager.Instance.UpdateTimer(timer, qteWindowTime);
                     QTEManager.Instance.UpdateSequenceProgress(currentKeyIndex, qteSequence.Count);
+                    QTEManager.Instance.UpdateTimer(timeRemaining, qteWindowTime);
                 }
                 
                 // Проверяем текущую клавишу в последовательности
@@ -212,14 +206,12 @@ public class QTESystem : MonoBehaviour
                     break;
                 }
                 
+                timeRemaining -= Time.unscaledDeltaTime;
                 yield return null; // yield return null работает даже при timeScale = 0
             }
             
-            // Если время вышло и не все клавиши нажаты - провал
-            if (currentKeyIndex < qteSequence.Count && result != QTEResult.Blocked)
-            {
-                result = QTEResult.Failed;
-            }
+            if (result != QTEResult.Blocked && currentKeyIndex < qteSequence.Count)
+                result = QTEResult.Failed; // таймаут или незавершённая последовательность
         }
         
         // 6. Обрабатываем результат QTE (успех/неудача) ПЕРЕД возобновлением времени
@@ -238,12 +230,6 @@ public class QTESystem : MonoBehaviour
         // 9. ВОЗОБНОВЛЯЕМ ВРЕМЯ после скрытия UI
         Time.timeScale = 1f;
         wasTimeStopped = false;
-        
-        // 10. Возобновляем таймер хода после завершения QTE
-        if (CameraManager.Instance != null)
-        {
-            CameraManager.Instance.ResumeTimer();
-        }
         
         // 10. Показываем HUD экшен-режима обратно (если мы все еще в экшен-режиме)
         if (CameraManager.Instance != null && CameraManager.Instance.IsActionMode())
@@ -407,7 +393,7 @@ public class QTESystem : MonoBehaviour
     
     
     /// <summary>
-    /// Отменяет активный QTE (например, при выходе из зоны угрозы или окончании таймера хода).
+    /// Отменяет активный QTE (например, при выходе из экшен-режима).
     /// При отмене урон не наносится, так как это не вина игрока.
     /// </summary>
     public void CancelQTE()
@@ -424,12 +410,6 @@ public class QTESystem : MonoBehaviour
         {
             Time.timeScale = 1f;
             wasTimeStopped = false;
-        }
-        
-        // Возобновляем таймер хода при отмене QTE
-        if (CameraManager.Instance != null)
-        {
-            CameraManager.Instance.ResumeTimer();
         }
         
         // Скрываем UI QTE

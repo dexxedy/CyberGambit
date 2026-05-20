@@ -37,9 +37,12 @@ public class ArmyDeploymentController : MonoBehaviour
     [SerializeField] private Transform cardHandContainer;
     [Tooltip("Зона «вернуть юнита» (нижняя панель). Drop с поля сюда отменяет перетаскивание.")]
     [SerializeField] private RectTransform returnDropZone;
-    [SerializeField] private TMP_Text budgetText;
+    [SerializeField] private Slider budgetSlider;
     [SerializeField] private Button confirmButton;
     [SerializeField] private TMP_Text confirmHintText;
+    [SerializeField] private DeploymentUnitInfoPanelUI unitInfoPanel;
+    [Tooltip("Спрайт панели по умолчанию (цельная картинка из Figma), если у карточки нет своего.")]
+    [SerializeField] private Sprite defaultUnitInfoPanelSprite;
 
     [SerializeField] private bool createMinimalUiIfMissing = true;
 
@@ -139,6 +142,7 @@ public class ArmyDeploymentController : MonoBehaviour
         BuildCards();
         RefreshBudgetLabel();
         UpdateConfirmButtonState();
+        HideUnitInfoPanel();
 
         if (confirmButton != null)
         {
@@ -236,6 +240,19 @@ public class ArmyDeploymentController : MonoBehaviour
     }
 
     public RectTransform GetReturnDropZone() => returnDropZone;
+
+    public void ShowUnitInfoForOffer(int offerIndex)
+    {
+        if (unitInfoPanel == null) return;
+        if (!TryGetOffer(offerIndex, out DeploymentOfferEntry entry)) return;
+        unitInfoPanel.Show(entry);
+    }
+
+    public void HideUnitInfoPanel()
+    {
+        if (unitInfoPanel != null)
+            unitInfoPanel.Hide();
+    }
 
     public int GetPointsRemaining() => pointsRemaining;
 
@@ -349,8 +366,7 @@ public class ArmyDeploymentController : MonoBehaviour
 
     private void RefreshBudgetLabel()
     {
-        if (budgetText != null)
-            budgetText.text = $"Очки: {pointsRemaining} / {armyPointBudget}";
+        ApplyReadOnlySlider(budgetSlider, pointsRemaining, armyPointBudget);
     }
 
     private void UpdateConfirmButtonState()
@@ -531,7 +547,7 @@ public class ArmyDeploymentController : MonoBehaviour
             ret.transform.SetParent(canvasGo.transform, false);
             RectTransform rr = ret.AddComponent<RectTransform>();
             rr.anchorMin = new Vector2(0.04f, 0.02f);
-            rr.anchorMax = new Vector2(0.96f, 0.30f);
+            rr.anchorMax = new Vector2(0.72f, 0.30f);
             rr.offsetMin = Vector2.zero;
             rr.offsetMax = Vector2.zero;
             Image rim = ret.AddComponent<Image>();
@@ -546,7 +562,7 @@ public class ArmyDeploymentController : MonoBehaviour
             hand.transform.SetParent(canvasGo.transform, false);
             RectTransform handRt = hand.AddComponent<RectTransform>();
             handRt.anchorMin = new Vector2(0.04f, 0.02f);
-            handRt.anchorMax = new Vector2(0.96f, 0.26f);
+            handRt.anchorMax = new Vector2(0.72f, 0.26f);
             handRt.offsetMin = Vector2.zero;
             handRt.offsetMax = Vector2.zero;
             var hlg = hand.AddComponent<HorizontalLayoutGroup>();
@@ -560,18 +576,14 @@ public class ArmyDeploymentController : MonoBehaviour
         }
 
         {
-            GameObject budgetGo = new GameObject("BudgetText");
+            GameObject budgetGo = new GameObject("BudgetSlider");
             budgetGo.transform.SetParent(canvasGo.transform, false);
             RectTransform br = budgetGo.AddComponent<RectTransform>();
-            br.anchorMin = new Vector2(0.04f, 0.72f);
-            br.anchorMax = new Vector2(0.5f, 0.96f);
+            br.anchorMin = new Vector2(0.04f, 0.78f);
+            br.anchorMax = new Vector2(0.5f, 0.94f);
             br.offsetMin = Vector2.zero;
             br.offsetMax = Vector2.zero;
-            budgetText = budgetGo.AddComponent<TextMeshProUGUI>();
-            budgetText.fontSize = 22;
-            budgetText.color = Color.white;
-            if (TMP_Settings.defaultFontAsset != null)
-                budgetText.font = TMP_Settings.defaultFontAsset;
+            budgetSlider = CreateReadOnlySlider(budgetGo.transform, new Color(0.25f, 0.9f, 0.5f, 1f));
         }
 
         {
@@ -617,6 +629,143 @@ public class ArmyDeploymentController : MonoBehaviour
             if (TMP_Settings.defaultFontAsset != null)
                 lbl.font = TMP_Settings.defaultFontAsset;
         }
+
+        BuildDeploymentUnitInfoPanel(canvasGo.transform);
+    }
+
+    private void BuildDeploymentUnitInfoPanel(Transform canvasTransform)
+    {
+        GameObject panelGo = new GameObject("DeploymentUnitInfoPanel");
+        panelGo.transform.SetParent(canvasTransform, false);
+        RectTransform panelRt = panelGo.AddComponent<RectTransform>();
+        panelRt.anchorMin = new Vector2(0.74f, 0.12f);
+        panelRt.anchorMax = new Vector2(0.98f, 0.88f);
+        panelRt.offsetMin = Vector2.zero;
+        panelRt.offsetMax = Vector2.zero;
+
+        Image bg = panelGo.AddComponent<Image>();
+        bg.color = new Color(0.04f, 0.06f, 0.1f, 0.92f);
+        bg.raycastTarget = false;
+        if (defaultUnitInfoPanelSprite != null)
+        {
+            bg.sprite = defaultUnitInfoPanelSprite;
+            bg.color = Color.white;
+        }
+
+        GameObject statsBox = new GameObject("StatsTextBlock");
+        statsBox.transform.SetParent(panelGo.transform, false);
+        RectTransform statsRt = statsBox.AddComponent<RectTransform>();
+        statsRt.anchorMin = new Vector2(0.08f, 0.64f);
+        statsRt.anchorMax = new Vector2(0.55f, 0.82f);
+        statsRt.offsetMin = Vector2.zero;
+        statsRt.offsetMax = Vector2.zero;
+
+        TMP_Text damageTmp = CreateTmpText(statsBox.transform, "DamageValue",
+            new Vector2(0f, 0.52f), new Vector2(1f, 1f),
+            Vector2.zero, Vector2.zero, 26f, TextAlignmentOptions.TopLeft);
+        damageTmp.fontStyle = FontStyles.Bold;
+
+        TMP_Text healthTmp = CreateTmpText(statsBox.transform, "HealthValue",
+            new Vector2(0f, 0f), new Vector2(1f, 0.48f),
+            Vector2.zero, Vector2.zero, 26f, TextAlignmentOptions.TopLeft);
+        healthTmp.fontStyle = FontStyles.Bold;
+
+        GameObject abilityBox = new GameObject("AbilityTextBlock");
+        abilityBox.transform.SetParent(panelGo.transform, false);
+        RectTransform abilityRt = abilityBox.AddComponent<RectTransform>();
+        abilityRt.anchorMin = new Vector2(0.08f, 0.38f);
+        abilityRt.anchorMax = new Vector2(0.92f, 0.62f);
+        abilityRt.offsetMin = Vector2.zero;
+        abilityRt.offsetMax = Vector2.zero;
+
+        TMP_Text nameTmp = CreateTmpText(abilityBox.transform, "AbilityName",
+            new Vector2(0f, 1f), new Vector2(1f, 1f),
+            new Vector2(0, -4), new Vector2(0, 28), 22f, TextAlignmentOptions.TopLeft);
+        nameTmp.fontStyle = FontStyles.Bold;
+        nameTmp.color = new Color(0.35f, 0.95f, 1f);
+
+        TMP_Text descTmp = CreateTmpText(abilityBox.transform, "AbilityDescription",
+            new Vector2(0f, 0.35f), new Vector2(1f, 0.85f),
+            Vector2.zero, Vector2.zero, 13f, TextAlignmentOptions.TopLeft);
+        descTmp.textWrappingMode = TextWrappingModes.Normal;
+        descTmp.color = new Color(0.75f, 0.85f, 0.9f);
+
+        TMP_Text cdTmp = CreateTmpText(abilityBox.transform, "AbilityCooldown",
+            new Vector2(0f, 0f), new Vector2(1f, 0.28f),
+            Vector2.zero, Vector2.zero, 12f, TextAlignmentOptions.BottomLeft);
+        cdTmp.color = new Color(0.5f, 0.65f, 0.75f);
+
+        panelGo.SetActive(false);
+
+        var panel = panelGo.AddComponent<DeploymentUnitInfoPanelUI>();
+        panel.ConfigureRuntime(panelGo, bg, damageTmp, healthTmp, nameTmp, descTmp, cdTmp, defaultUnitInfoPanelSprite);
+        unitInfoPanel = panel;
+    }
+
+    private static void ApplyReadOnlySlider(Slider slider, int current, int max)
+    {
+        if (slider == null) return;
+        slider.minValue = 0f;
+        slider.maxValue = 1f;
+        slider.wholeNumbers = false;
+        slider.interactable = false;
+        slider.value = max > 0 ? Mathf.Clamp01((float)current / max) : 0f;
+    }
+
+    private static Slider CreateReadOnlySlider(Transform parent, Color fillColor)
+    {
+        return CreateReadOnlySlider(parent, Vector2.zero, Vector2.one, fillColor);
+    }
+
+    private static Slider CreateReadOnlySlider(Transform parent, Vector2 anchorMin, Vector2 anchorMax, Color fillColor)
+    {
+        var root = new GameObject("Slider");
+        root.transform.SetParent(parent, false);
+        var rootRt = root.AddComponent<RectTransform>();
+        rootRt.anchorMin = anchorMin;
+        rootRt.anchorMax = anchorMax;
+        rootRt.offsetMin = Vector2.zero;
+        rootRt.offsetMax = Vector2.zero;
+
+        var slider = root.AddComponent<Slider>();
+        slider.transition = Selectable.Transition.None;
+        slider.interactable = false;
+        slider.minValue = 0f;
+        slider.maxValue = 1f;
+
+        var bgGo = new GameObject("Background");
+        bgGo.transform.SetParent(root.transform, false);
+        var bgRt = bgGo.AddComponent<RectTransform>();
+        StretchUiRect(bgRt);
+        var bgImg = bgGo.AddComponent<Image>();
+        bgImg.color = new Color(0.05f, 0.05f, 0.08f, 0.95f);
+        slider.targetGraphic = bgImg;
+
+        var fillAreaGo = new GameObject("Fill Area");
+        fillAreaGo.transform.SetParent(root.transform, false);
+        var fillAreaRt = fillAreaGo.AddComponent<RectTransform>();
+        StretchUiRect(fillAreaRt);
+        fillAreaRt.offsetMin = new Vector2(4f, 4f);
+        fillAreaRt.offsetMax = new Vector2(-4f, -4f);
+
+        var fillGo = new GameObject("Fill");
+        fillGo.transform.SetParent(fillAreaGo.transform, false);
+        var fillRt = fillGo.AddComponent<RectTransform>();
+        StretchUiRect(fillRt);
+        var fillImg = fillGo.AddComponent<Image>();
+        fillImg.color = fillColor;
+
+        slider.fillRect = fillRt;
+        slider.direction = Slider.Direction.LeftToRight;
+        return slider;
+    }
+
+    private static void StretchUiRect(RectTransform rt)
+    {
+        rt.anchorMin = Vector2.zero;
+        rt.anchorMax = Vector2.one;
+        rt.offsetMin = Vector2.zero;
+        rt.offsetMax = Vector2.zero;
     }
 }
 
@@ -627,4 +776,6 @@ public class DeploymentOfferEntry
     [Min(0)] public int costPoints = 1;
     [Tooltip("-1 = без лимита копий за партию")]
     public int maxCopies = -1;
+    [Tooltip("Опционально: свой спрайт панели для этого типа (иначе default на ArmyDeploymentController).")]
+    public Sprite infoPanelSprite;
 }

@@ -21,14 +21,84 @@ public class Mission1BotBrain : MonoBehaviour, IBotMissionBrain
     [Header("Mission1 Rotation")]
     [SerializeField] private float rotationMaxExtraDistanceMeters = 8f;
 
+    [Header("Turn pacing")]
+    [Tooltip("После действий бота: пауза, камера с врага, ход игроку.")]
+    [SerializeField] private float postHandoffToPlayerDelay = 0.45f;
+
     private int turnCounter = 0;
     private Unit lastSelectedUnit = null;
+    private Mission1FlagZone lockedTargetFlagForTurn;
+
+    private static void FinishBotTurn(BotController controller) => controller.EndTurnInternal();
+
+    private IEnumerator HandoffToPlayer(BotController controller)
+    {
+        if (postHandoffToPlayerDelay > 0f)
+            yield return new WaitForSeconds(postHandoffToPlayerDelay);
+        if (CameraManager.Instance != null && CameraManager.Instance.IsFollowingBotUnit())
+            CameraManager.Instance.ReturnTacticalCameraToOriginalPosition();
+        FinishBotTurn(controller);
+    }
 
     public bool CanRun()
     {
         // Mission1 exists if there are flags in scene.
         Mission1FlagZone[] flags = FindObjectsByType<Mission1FlagZone>(FindObjectsInactive.Exclude);
         return flags != null && flags.Length > 0 && GetComponent<Mission1BotObjectiveProvider>() != null;
+    }
+
+    public IEnumerator PickActingUnitBeforeDice(BotController controller)
+    {
+        if (controller == null)
+            yield break;
+
+        Mission1BotObjectiveProvider provider = GetComponent<Mission1BotObjectiveProvider>();
+        if (provider == null)
+        {
+            yield return HandoffToPlayer(controller);
+            yield break;
+        }
+
+        Mission1FlagZone targetFlag = provider.SelectTargetFlag();
+        if (targetFlag == null)
+        {
+            yield return HandoffToPlayer(controller);
+            yield break;
+        }
+
+        lockedTargetFlagForTurn = targetFlag;
+
+        Unit[] allUnits = FindObjectsByType<Unit>(FindObjectsInactive.Exclude);
+        var botUnits = allUnits.Where(u => u != null && u.owner == Player.Player2 && u.GetHealth() > 0).ToList();
+        if (botUnits.Count == 0)
+        {
+            lockedTargetFlagForTurn = null;
+            yield return HandoffToPlayer(controller);
+            yield break;
+        }
+
+        Unit bestAll = SelectUnit(botUnits);
+        Unit selected = bestAll;
+        if (lastSelectedUnit != null && botUnits.Count > 1)
+        {
+            var altList = botUnits.Where(u => u != null && u != lastSelectedUnit).ToList();
+            Unit bestAlt = altList.Count > 0 ? SelectUnit(altList) : null;
+            if (bestAlt != null)
+            {
+                float bestAllScore = UnitProximityScore(bestAll);
+                float bestAltScore = UnitProximityScore(bestAlt);
+                selected = (bestAltScore <= bestAllScore + Mathf.Max(0f, rotationMaxExtraDistanceMeters)) ? bestAlt : bestAll;
+            }
+        }
+
+        if (selected == null)
+        {
+            lockedTargetFlagForTurn = null;
+            yield return HandoffToPlayer(controller);
+            yield break;
+        }
+
+        controller.SetPickedBotActingUnitForTurn(selected);
     }
 
     public IEnumerator ExecuteTurn(BotController controller, float moveBudgetMeters)
@@ -40,11 +110,12 @@ public class Mission1BotBrain : MonoBehaviour, IBotMissionBrain
         if (provider == null)
         {
             if (debug) Debug.LogWarning("[Mission1BotBrain] No Mission1BotObjectiveProvider on BotController.");
-            controller.EndTurnInternal();
+            yield return HandoffToPlayer(controller);
             yield break;
         }
 
-        Mission1FlagZone targetFlag = provider.SelectTargetFlag();
+        Mission1FlagZone targetFlag = lockedTargetFlagForTurn != null ? lockedTargetFlagForTurn : provider.SelectTargetFlag();
+        lockedTargetFlagForTurn = null;
         if (targetFlag == null)
         {
             if (debug)
@@ -52,7 +123,7 @@ public class Mission1BotBrain : MonoBehaviour, IBotMissionBrain
                 int count = FindObjectsByType<Mission1FlagZone>(FindObjectsInactive.Exclude)?.Length ?? 0;
                 Debug.LogWarning($"[Mission1BotBrain] SelectTargetFlag returned null. FlagsInScene={count}");
             }
-            controller.EndTurnInternal();
+            yield return HandoffToPlayer(controller);
             yield break;
         }
 
@@ -71,51 +142,45 @@ public class Mission1BotBrain : MonoBehaviour, IBotMissionBrain
         var botUnits = allUnits.Where(u => u != null && u.owner == Player.Player2 && u.GetHealth() > 0).ToList();
         if (botUnits.Count == 0)
         {
-            controller.EndTurnInternal();
+            yield return HandoffToPlayer(controller);
             yield break;
         }
 
-        // Rotation: avoid repeating same unit unless alternative is much worse
-        Unit bestAll = SelectUnit(botUnits);
-        Unit selected = bestAll;
-        if (lastSelectedUnit != null && botUnits.Count > 1)
+        Unit pre = controller.ConsumePickedBotActingUnitForTurn();
+        Unit selected;
+        if (pre != null && pre.GetHealth() > 0 && pre.owner == Player.Player2 && botUnits.Contains(pre))
+            selected = pre;
+        else
         {
-            var altList = botUnits.Where(u => u != null && u != lastSelectedUnit).ToList();
-            Unit bestAlt = altList.Count > 0 ? SelectUnit(altList) : null;
-            if (bestAlt != null)
+            Unit bestAll = SelectUnit(botUnits);
+            selected = bestAll;
+            if (lastSelectedUnit != null && botUnits.Count > 1)
             {
-                float bestAllScore = UnitProximityScore(bestAll);
-                float bestAltScore = UnitProximityScore(bestAlt);
-                selected = (bestAltScore <= bestAllScore + Mathf.Max(0f, rotationMaxExtraDistanceMeters)) ? bestAlt : bestAll;
+                var altList = botUnits.Where(u => u != null && u != lastSelectedUnit).ToList();
+                Unit bestAlt = altList.Count > 0 ? SelectUnit(altList) : null;
+                if (bestAlt != null)
+                {
+                    float bestAllScore = UnitProximityScore(bestAll);
+                    float bestAltScore = UnitProximityScore(bestAlt);
+                    selected = (bestAltScore <= bestAllScore + Mathf.Max(0f, rotationMaxExtraDistanceMeters)) ? bestAlt : bestAll;
+                }
             }
         }
 
         if (selected == null)
         {
-            controller.EndTurnInternal();
+            yield return HandoffToPlayer(controller);
             yield break;
         }
 
         lastSelectedUnit = selected;
         selected.SetRemainingMoveMeters(moveBudgetMeters);
 
-        if (CameraManager.Instance != null)
-        {
-            // Кинематографический показ хода бота — только если этот бот-юнит уже "известен" игроку (spotted).
-            bool canShow = EnemyIntelTracker.Instance != null && EnemyIntelTracker.Instance.IsSpotted(selected);
-            if (canShow)
-            {
-                CameraManager.Instance.SwitchToBotUnitView(selected);
-                if (CameraManager.Instance.IsBotFollowCameraEnabled())
-                    yield return new WaitForSeconds(0.35f);
-            }
-        }
-
         // Attack now if visible enemy in range
         if (controller.TryGetBestVisibleEnemyInAttackRangeForBrain(selected, out Unit enemyNow))
         {
             yield return controller.PerformAttackInternal(selected, enemyNow);
-            controller.EndTurnInternal();
+            yield return HandoffToPlayer(controller);
             yield break;
         }
 
@@ -128,7 +193,7 @@ public class Mission1BotBrain : MonoBehaviour, IBotMissionBrain
             yield return controller.PerformAttackInternal(selected, enemyAfter);
         }
 
-        controller.EndTurnInternal();
+        yield return HandoffToPlayer(controller);
     }
 
     private Unit SelectUnit(System.Collections.Generic.List<Unit> botUnits)

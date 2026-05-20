@@ -92,17 +92,15 @@ public class TacticalMapUIController : MonoBehaviour
                 Unit unit = pair.Key;
                 if (unit == null || unit.GetHealth() <= 0) continue;
 
-                // PvBot fog-of-war: врагов показываем только если они были замечены в экшене.
+                // PvBot fog-of-war: white = точная позиция, gray = last known.
                 if (GameManager.Instance != null && GameManager.Instance.GetGameMode() == GameMode.PlayerVsBot &&
                     unit.owner == Player.Player2)
                 {
-                    if (EnemyIntelTracker.Instance == null || !EnemyIntelTracker.Instance.IsSpotted(unit))
+                    if (FogWarIntelTracker.Instance == null ||
+                        !FogWarIntelTracker.Instance.TryGetDisplayPosition(unit, out Vector3 displayPos, out _))
                         continue;
 
-                    if (EnemyIntelTracker.Instance.TryGetLastKnown(unit, out Vector3 lastKnown))
-                        MoveIconToWorld(unit, lastKnown, snapInstantly: false);
-                    else
-                        continue;
+                    MoveIconToWorld(unit, displayPos, snapInstantly: false);
                 }
                 else
                 {
@@ -151,11 +149,12 @@ public class TacticalMapUIController : MonoBehaviour
             if (unit == null || unit.GetHealth() <= 0) continue;
             aliveUnits.Add(unit);
 
-            // PvBot fog-of-war: не создаём иконки врагов до обнаружения.
+            // PvBot fog-of-war: не создаём иконки врагов до разведки.
             if (GameManager.Instance != null && GameManager.Instance.GetGameMode() == GameMode.PlayerVsBot &&
                 unit.owner == Player.Player2)
             {
-                if (EnemyIntelTracker.Instance == null || !EnemyIntelTracker.Instance.IsSpotted(unit))
+                if (FogWarIntelTracker.Instance == null ||
+                    !FogWarIntelTracker.Instance.ShouldShowEnemyOnTacticalMap(unit))
                     continue;
             }
 
@@ -164,10 +163,10 @@ public class TacticalMapUIController : MonoBehaviour
             {
                 if (GameManager.Instance != null && GameManager.Instance.GetGameMode() == GameMode.PlayerVsBot &&
                     unit.owner == Player.Player2 &&
-                    EnemyIntelTracker.Instance != null &&
-                    EnemyIntelTracker.Instance.TryGetLastKnown(unit, out Vector3 lastKnown))
+                    FogWarIntelTracker.Instance != null &&
+                    FogWarIntelTracker.Instance.TryGetDisplayPosition(unit, out Vector3 displayPos, out _))
                 {
-                    MoveIconToWorld(unit, lastKnown, !smoothMove);
+                    MoveIconToWorld(unit, displayPos, !smoothMove);
                 }
                 else
                 {
@@ -225,11 +224,12 @@ public class TacticalMapUIController : MonoBehaviour
     {
         if (unit == null || iconsByUnit.ContainsKey(unit)) return;
 
-        // PvBot fog-of-war safety: не создаём врагов, пока они не spotted.
+        // PvBot fog-of-war: не создаём врагов без разведки.
         if (GameManager.Instance != null && GameManager.Instance.GetGameMode() == GameMode.PlayerVsBot &&
             unit.owner == Player.Player2)
         {
-            if (EnemyIntelTracker.Instance == null || !EnemyIntelTracker.Instance.IsSpotted(unit))
+            if (FogWarIntelTracker.Instance == null ||
+                !FogWarIntelTracker.Instance.ShouldShowEnemyOnTacticalMap(unit))
                 return;
         }
 

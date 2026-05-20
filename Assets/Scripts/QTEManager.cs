@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.UI;
 using TMPro;
 using System.Collections.Generic;
 
@@ -13,7 +14,6 @@ public class QTEManager : MonoBehaviour
     [Header("UI Elements")]
     [SerializeField] private GameObject qtePanel; // Главная панель QTE
     [SerializeField] private TextMeshProUGUI qteInstructionText; // Текст с инструкциями
-    [SerializeField] private TextMeshProUGUI timerText; // Текст таймера (опционально)
     
     [Header("QTE Sequence UI")]
     [SerializeField] private GameObject[] keyHints = new GameObject[3]; // Подсказки для 3 клавиш (GameObject)
@@ -23,12 +23,39 @@ public class QTEManager : MonoBehaviour
     [SerializeField] private Color completedKeyColor = Color.green; // Цвет выполненной клавиши
     [SerializeField] private Color failedKeyColor = Color.red; // Цвет неправильной клавиши
     
+    [Header("QTE Timer (only during QTE)")]
+    [SerializeField] private TextMeshProUGUI qteTimerText;
+    [SerializeField] private Image qteTimerFill;
+    
     void Awake()
     {
         if (Instance == null)
             Instance = this;
         else
             Destroy(gameObject);
+        
+        ResolveTimerReferences();
+    }
+    
+    void ResolveTimerReferences()
+    {
+        if (qtePanel == null)
+            return;
+        
+        var panelRoot = qtePanel.transform;
+        if (qteTimerText == null)
+        {
+            var timerTransform = panelRoot.Find("QTE Timer Text");
+            if (timerTransform != null)
+                qteTimerText = timerTransform.GetComponent<TextMeshProUGUI>();
+        }
+        
+        if (qteTimerFill == null)
+        {
+            var fillTransform = panelRoot.Find("QTE Timer Fill");
+            if (fillTransform != null)
+                qteTimerFill = fillTransform.GetComponent<Image>();
+        }
     }
     
     /// <summary>
@@ -103,11 +130,7 @@ public class QTEManager : MonoBehaviour
             }
         }
         
-        // Инициализируем таймер (если есть)
-        if (timerText != null)
-        {
-            timerText.text = "";
-        }
+        SetTimerVisible(false);
     }
     
     /// <summary>
@@ -115,23 +138,43 @@ public class QTEManager : MonoBehaviour
     /// </summary>
     public void HideQTE()
     {
+        SetTimerVisible(false);
+        
         if (qtePanel != null)
             qtePanel.SetActive(false);
     }
     
     /// <summary>
-    /// Обновляет таймер QTE (опционально, для визуального отображения оставшегося времени)
+    /// Показывает таймер QTE и сбрасывает отображение (вызывается при старте фазы ввода).
     /// </summary>
-    /// <param name="remainingTime">Оставшееся время</param>
-    /// <param name="totalTime">Общее время QTE</param>
-    public void UpdateTimer(float remainingTime, float totalTime)
+    public void ShowTimer(float durationSeconds)
     {
-        if (timerText != null)
+        SetTimerVisible(true);
+        UpdateTimer(durationSeconds, durationSeconds);
+    }
+    
+    /// <summary>
+    /// Обновляет таймер QTE (работает при timeScale = 0 через unscaled время в QTESystem).
+    /// </summary>
+    public void UpdateTimer(float secondsRemaining, float totalSeconds)
+    {
+        if (qteTimerText != null)
         {
-            float percentage = remainingTime / totalTime;
-            timerText.text = $"Таймер: {remainingTime:F1}";
-            // Можно добавить визуальный индикатор (полоска прогресса)
+            int display = Mathf.CeilToInt(Mathf.Max(0f, secondsRemaining));
+            qteTimerText.text = $"Таймер: {display}";
         }
+        
+        if (qteTimerFill != null && totalSeconds > 0f)
+            qteTimerFill.fillAmount = Mathf.Clamp01(secondsRemaining / totalSeconds);
+    }
+    
+    void SetTimerVisible(bool visible)
+    {
+        if (qteTimerText != null)
+            qteTimerText.gameObject.SetActive(visible);
+        
+        if (qteTimerFill != null)
+            qteTimerFill.gameObject.SetActive(visible);
     }
     
     /// <summary>

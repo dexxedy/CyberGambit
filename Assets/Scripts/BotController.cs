@@ -16,6 +16,16 @@ public class BotController : MonoBehaviour
     
     [Header("Bot Settings")]
     [SerializeField] private float turnStartDelay = 0.5f;
+    [Tooltip("После камеры на выбранного врага: пауза перед броском кубика.")]
+    [SerializeField] private float preDiceRollDelay = 0.2f;
+    [Tooltip("Пауза после броска кубика, чтобы успела проиграться анимация кубика.")]
+    [SerializeField] private float dicePresentationDelay = 1.0f;
+    [Tooltip("Доп. пауза после анимации кубика перед действием выбранного врага.")]
+    [SerializeField] private float postDiceRollDelay = 0.2f;
+    [Tooltip("После действий бота (дефолтный ход): пауза и возврат камеры, затем ход игроку.")]
+    [SerializeField] private float postBotTurnDelayBeforePlayer = 0.4f;
+    [Tooltip("Пауза после прилёта камеры к выбранному врагу (до кубика; плавный MoveCamera ~0.5 c + запас).")]
+    [SerializeField] private float botIntroCameraSettleDelay = 0.55f;
     [SerializeField] private float moveDelay = 0.3f;
     [SerializeField] private float attackDelay = 0.3f;
     [SerializeField] private float attackRange = 3.0f; // Увеличен радиус атаки
@@ -37,6 +47,9 @@ public class BotController : MonoBehaviour
     [SerializeField] private float closeAwarenessRadius = 3.0f;
 
     // Mission-specific tuning is stored inside mission brains.
+
+    /// <summary> Юнит, выбранный до броска кубика (миссии или SelectBestUnit). Сбрасывается в конце фазы выбора/хода. </summary>
+    private Unit _pickedBotActingUnitThisTurn;
     
     private bool isExecutingTurn = false;
     private bool isFirstTurn = true;
@@ -72,6 +85,26 @@ public class BotController : MonoBehaviour
     };
     
     public bool IsExecutingTurn() => isExecutingTurn;
+
+    internal void SetPickedBotActingUnitForTurn(Unit unit)
+    {
+        _pickedBotActingUnitThisTurn = unit;
+        if (unit != null && GameManager.Instance != null && GameManager.Instance.IsBotTurn())
+            FogOfWarManager.Instance?.BeginBotSpectatorVision(unit);
+    }
+
+    internal Unit PeekPickedBotActingUnitForTurn() => _pickedBotActingUnitThisTurn;
+
+    public Unit GetPickedActingUnitForPresentation() => _pickedBotActingUnitThisTurn;
+
+    internal Unit ConsumePickedBotActingUnitForTurn()
+    {
+        Unit u = _pickedBotActingUnitThisTurn;
+        _pickedBotActingUnitThisTurn = null;
+        return u;
+    }
+
+    internal void ClearPickedBotActingUnitForTurn() => _pickedBotActingUnitThisTurn = null;
     
     void Awake()
     {
@@ -231,13 +264,36 @@ public class BotController : MonoBehaviour
     {
         isExecutingTurn = true;
         enemiesThatAttackedThisTurn.Clear(); // Сброс автоатак
+        ClearPickedBotActingUnitForTurn();
         
         yield return new WaitForSeconds(turnStartDelay);
-        
-        // 1. АНАЛИЗ ДОСКИ И ОПРЕДЕЛЕНИЕ РЕЖИМА
+
         BotGameMode gameMode = DetermineGameMode();
-        
-        // БРОСОК КОСТЕЙ НА ХОД БОТА
+
+        // 1) Кто ходит (до кубика): миссия или SelectBestUnit
+        yield return StartCoroutine(RunPickActingUnitBeforeDicePhase(gameMode));
+
+        if (GameManager.Instance != null && (!GameManager.Instance.IsBotTurn() || GameManager.Instance.IsGameOver()))
+        {
+            isExecutingTurn = false;
+            ClearPickedBotActingUnitForTurn();
+            yield break;
+        }
+
+        // 2) Камера на выбранного врага (если виден), затем пауза перед кубиком
+        yield return StartCoroutine(RunCameraOnPickedUnitBeforeDice());
+
+        if (GameManager.Instance != null && (!GameManager.Instance.IsBotTurn() || GameManager.Instance.IsGameOver()))
+        {
+            isExecutingTurn = false;
+            ClearPickedBotActingUnitForTurn();
+            yield break;
+        }
+
+        if (preDiceRollDelay > 0f)
+            yield return new WaitForSeconds(preDiceRollDelay);
+
+        // 3) Кубик и паузы; 4) действие уже выбранного юнита
         float moveBudgetMeters = 0f;
         if (GameManager.Instance != null)
         {
@@ -248,6 +304,12 @@ public class BotController : MonoBehaviour
             moveBudgetMeters = GameManager.Instance.GetCurrentTurnMoveBudgetMeters();
         }
 
+        if (dicePresentationDelay > 0f)
+            yield return new WaitForSeconds(dicePresentationDelay);
+
+        if (postDiceRollDelay > 0f)
+            yield return new WaitForSeconds(postDiceRollDelay);
+
         // Mission brains: each mission can provide its own behavior without bloating BotController.
         var brains = GetComponents<MonoBehaviour>().OfType<IBotMissionBrain>().ToList();
         foreach (var brain in brains)
@@ -255,30 +317,26 @@ public class BotController : MonoBehaviour
             if (brain == null) continue;
             if (!brain.CanRun()) continue;
             yield return StartCoroutine(brain.ExecuteTurn(this, moveBudgetMeters));
+            ClearPickedBotActingUnitForTurn();
             yield break;
         }
 
-        // 2. ВЫБОР ЮНИТА
-        Unit selectedUnit = SelectBestUnit(gameMode);
+        // Дефолтный ход: юнит уже выбран до кубика
+        Unit selectedUnit = ConsumePickedBotActingUnitForTurn();
+        if (selectedUnit == null)
+            selectedUnit = SelectBestUnit(gameMode);
         if (selectedUnit == null)
         {
-            // Возвращаем камеру на исходную позицию, если она следовала за юнитом
             if (CameraManager.Instance != null)
             {
                 CameraManager.Instance.ReturnTacticalCameraToOriginalPosition();
             }
             EndTurn();
+            ClearPickedBotActingUnitForTurn();
             yield break;
         }
         
         selectedUnit.SetRemainingMoveMeters(moveBudgetMeters);
-        
-        // Переключаем камеру игрока на приближенный вид над юнитом бота
-        if (CameraManager.Instance != null)
-        {
-            CameraManager.Instance.SwitchToBotUnitView(selectedUnit);
-            yield return new WaitForSeconds(0.6f); // Ждем завершения перемещения камеры
-        }
         
         // 2. ПРОВЕРКА: Есть ли враги в радиусе атаки ПРЯМО СЕЙЧАС?
         Unit enemyInRange = FindEnemyInAttackRange(selectedUnit);
@@ -342,9 +400,44 @@ public class BotController : MonoBehaviour
             }
         }
         
-        // 8. КОНЕЦ ХОДА
-        yield return new WaitForSeconds(0.3f);
+        // 8. Конец хода бота: пауза, камера с врага, передача хода игроку
+        if (CameraManager.Instance != null && CameraManager.Instance.IsFollowingBotUnit())
+            CameraManager.Instance.ReturnTacticalCameraToOriginalPosition();
+        if (postBotTurnDelayBeforePlayer > 0f)
+            yield return new WaitForSeconds(postBotTurnDelayBeforePlayer);
+        ClearPickedBotActingUnitForTurn();
         EndTurn();
+    }
+
+    private IEnumerator RunPickActingUnitBeforeDicePhase(BotGameMode gameMode)
+    {
+        var brains = GetComponents<MonoBehaviour>().OfType<IBotMissionBrain>().ToList();
+        foreach (IBotMissionBrain brain in brains)
+        {
+            if (brain == null) continue;
+            if (!brain.CanRun()) continue;
+            yield return brain.PickActingUnitBeforeDice(this);
+            yield break;
+        }
+
+        Unit u = SelectBestUnit(gameMode);
+        SetPickedBotActingUnitForTurn(u);
+    }
+
+    /// <summary> Камера на уже выбранного до кубика врага (если spotted / разрешено). </summary>
+    private IEnumerator RunCameraOnPickedUnitBeforeDice()
+    {
+        if (CameraManager.Instance == null || !CameraManager.Instance.IsBotFollowCameraEnabled())
+            yield break;
+
+        Unit u = PeekPickedBotActingUnitForTurn();
+        if (u == null || u.GetHealth() <= 0)
+            yield break;
+
+        CameraManager.Instance.SwitchToBotUnitView(u);
+        float wait = Mathf.Max(0f, botIntroCameraSettleDelay);
+        if (wait > 0f)
+            yield return new WaitForSeconds(wait);
     }
     
     /// <summary>
@@ -729,6 +822,7 @@ public class BotController : MonoBehaviour
         float best = float.NegativeInfinity;
         foreach (Unit e in enemies)
         {
+            if (!BotMayTargetUnitAsEnemy(attacker, e)) continue;
             if (!CanSeeTarget(attacker, e)) continue;
             float d = Vector3.Distance(attacker.transform.position, e.transform.position);
             if (d > attackRange) continue;
@@ -740,6 +834,20 @@ public class BotController : MonoBehaviour
             }
         }
         return target != null;
+    }
+
+    /// <summary>
+    /// Первое попадание луча зрения считается «видим цель», если это коллайдер самого юнита
+    /// или дочерний коллайдер (важно для танка: корпус часто без Unit на промежуточных узлах).
+    /// </summary>
+    private static bool VisionRayHitCountsAsTarget(RaycastHit hit, Unit target)
+    {
+        if (target == null) return false;
+        Unit hitUnit = hit.collider != null ? hit.collider.GetComponentInParent<Unit>() : null;
+        if (hitUnit == target) return true;
+        if (!target.IsTankUnit || hit.collider == null) return false;
+        Transform t = hit.collider.transform;
+        return t == target.transform || t.IsChildOf(target.transform);
     }
 
     private bool CanSeeTarget(Unit observer, Unit target)
@@ -763,8 +871,7 @@ public class BotController : MonoBehaviour
 
         if (Physics.Raycast(eye, dir, out RaycastHit hit, dist, visionOcclusionMask, QueryTriggerInteraction.Ignore))
         {
-            Unit hitUnit = hit.collider != null ? hit.collider.GetComponentInParent<Unit>() : null;
-            bool ok = hitUnit == target;
+            bool ok = VisionRayHitCountsAsTarget(hit, target);
             if (debugMission1Bot)
             {
                 Debug.DrawLine(eye, hit.point, ok ? Color.green : Color.red, 0.2f);
@@ -833,11 +940,10 @@ public class BotController : MonoBehaviour
             yield break;
         }
 
-        // Визуализация хода бота: показываем ТОЛЬКО если бот-юнит уже "известен" игроку (spotted).
         bool showBotTurn =
             GameManager.Instance != null && GameManager.Instance.GetGameMode() == GameMode.PlayerVsBot &&
             CameraManager.Instance != null && !CameraManager.Instance.IsActionMode() &&
-            EnemyIntelTracker.Instance != null && EnemyIntelTracker.Instance.IsSpotted(unit);
+            CameraManager.Instance.IsBotFollowCameraEnabled();
 
         if (showBotTurn && BotTurnTacticalOverlay.Instance != null)
         {
@@ -863,7 +969,7 @@ public class BotController : MonoBehaviour
         bool showBotTurn =
             GameManager.Instance != null && GameManager.Instance.GetGameMode() == GameMode.PlayerVsBot &&
             CameraManager.Instance != null && !CameraManager.Instance.IsActionMode() &&
-            EnemyIntelTracker.Instance != null && EnemyIntelTracker.Instance.IsSpotted(attacker);
+            CameraManager.Instance.IsBotFollowCameraEnabled();
 
         if (showBotTurn && BotTurnTacticalOverlay.Instance != null && target != null)
         {
@@ -1009,7 +1115,8 @@ public class BotController : MonoBehaviour
 
             // Двигаемся к end небольшими шагами, чтобы CC корректно сталкивался со стенами.
             float speed = Mathf.Max(0.1f, unit.MoveSpeed);
-            float duration = Mathf.Clamp(take / speed, 0.05f, 2.5f);
+            // Длительность строго по скорости юнита (без верхнего clamp — иначе длинные сегменты «ускоряются»).
+            float duration = Mathf.Max(0.05f, take / speed);
             float elapsed = 0f;
             Vector3 start = unit.transform.position;
             RotateTowardsTarget(unit, end);
@@ -1650,6 +1757,17 @@ public class BotController : MonoBehaviour
     // ========================================================================
     // АТАКА
     // ========================================================================
+
+    /// <summary>
+    /// PvBot: танк игрока не выбирается целью, кроме как для врага-Guardian (AT).
+    /// </summary>
+    private static bool BotMayTargetUnitAsEnemy(Unit attacker, Unit potentialEnemy)
+    {
+        if (potentialEnemy == null || !potentialEnemy.IsTankUnit) return true;
+        if (potentialEnemy.owner != Player.Player1) return true;
+        if (attacker == null || attacker.owner != Player.Player2) return true;
+        return attacker.chessType == ChessUnitType.Guardian;
+    }
     
     /// <summary>
     /// Находит врага в радиусе атаки с улучшенной системой приоритетов
@@ -1662,6 +1780,7 @@ public class BotController : MonoBehaviour
         
         List<Unit> enemiesInRange = allUnits
             .Where(u => u != null && u.owner != attacker.owner && u.GetHealth() > 0)
+            .Where(u => BotMayTargetUnitAsEnemy(attacker, u))
             .Where(u => {
                 float distance = GetDistance(attacker, u);
                 // Учитываем, что бот может подойти ближе после перемещения
@@ -1740,11 +1859,14 @@ public class BotController : MonoBehaviour
             yield break;
         }
 
+        if (attacker.owner == Player.Player2 && target.owner == Player.Player1 && target.IsTankUnit &&
+            attacker.chessType != ChessUnitType.Guardian)
+            yield break;
+
         // Если у атакующего есть экипированное оружие — атакуем огнестрелом (hitscan) без рывка/WeaponCollider.
         Weapon ranged = attacker.GetEquippedWeapon();
         if (ranged != null && ranged.Config != null)
         {
-            // Атакуем только если цель реально видима экшен-зрением.
             if (!CanSeeTarget(attacker, target))
                 yield break;
 
@@ -1768,6 +1890,12 @@ public class BotController : MonoBehaviour
 
             bool fired = ranged.TryFire(attacker, origin, dir);
             if (debugMission1Bot) Debug.Log($"[Mission1Bot] RangedFire attacker={attacker.name} target={target.name} fired={fired} ammo={ranged.AmmoInMag}/{ranged.AmmoReserve}");
+            if (fired && attacker.chessType == ChessUnitType.Guardian)
+            {
+                Animator anim = attacker.GetComponent<Animator>();
+                if (anim != null)
+                    anim.SetTrigger("Shoot");
+            }
             yield return new WaitForSeconds(0.2f);
             yield break;
         }
@@ -2193,6 +2321,7 @@ public class BotController : MonoBehaviour
         Unit[] allUnits = FindObjectsByType<Unit>(FindObjectsInactive.Exclude);
         var enemies = allUnits
             .Where(u => u != null && u.owner != unit.owner && u.GetHealth() > 0)
+            .Where(u => BotMayTargetUnitAsEnemy(unit, u))
             .Select(u => new { Unit = u, Distance = GetDistance(unit, u) })
             .ToList();
         
