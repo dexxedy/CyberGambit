@@ -63,6 +63,7 @@ public class DiceRenderUI : MonoBehaviour, IPointerClickHandler
     private Transform diceTransform;
     private Coroutine rollRoutine;
     private CanvasGroup canvasGroup;
+    private bool hudForceHidden;
 
     private void Awake()
     {
@@ -90,6 +91,7 @@ public class DiceRenderUI : MonoBehaviour, IPointerClickHandler
     {
         if (!clickToRoll) return;
         if (GameManager.Instance == null) return;
+        if (GameManager.Instance.IsGameOver()) return;
         if (GameManager.Instance.IsArmyDeploymentPhase()) return;
         if (GameManager.Instance.IsBotTurn()) return;
         if (GameManager.Instance.HasRolledDiceThisTurn()) return;
@@ -103,9 +105,18 @@ public class DiceRenderUI : MonoBehaviour, IPointerClickHandler
         TryRequestPlayerRoll();
     }
 
+    /// <summary>Принудительно скрыть/показать 3D-кость в UI (например, экран победы/поражения).</summary>
+    public void SetHudVisible(bool visible)
+    {
+        hudForceHidden = !visible;
+        ApplyHudVisibility();
+        UpdateClickThroughSettings();
+    }
+
     private void TryRequestPlayerRoll()
     {
         if (GameManager.Instance == null) return;
+        if (GameManager.Instance.IsGameOver()) return;
         if (GameManager.Instance.IsArmyDeploymentPhase()) return;
         if (GameManager.Instance.IsPaused()) return;
         if (CameraManager.Instance != null && CameraManager.Instance.IsActionMode()) return;
@@ -121,6 +132,7 @@ public class DiceRenderUI : MonoBehaviour, IPointerClickHandler
         // Включаем raycast только когда клик реально может бросить кубик — чтобы не перекрывать BF-иконки остальное время.
         bool humanNeedsRoll =
             GameManager.Instance != null &&
+            !GameManager.Instance.IsGameOver() &&
             !GameManager.Instance.IsArmyDeploymentPhase() &&
             !GameManager.Instance.IsPaused() &&
             !GameManager.Instance.IsBotTurn() &&
@@ -242,8 +254,24 @@ public class DiceRenderUI : MonoBehaviour, IPointerClickHandler
             if (canvasGroup == null) canvasGroup = gameObject.AddComponent<CanvasGroup>();
         }
 
+        if (hudForceHidden)
+        {
+            canvasGroup.alpha = 0f;
+            canvasGroup.interactable = false;
+            canvasGroup.blocksRaycasts = false;
+            return;
+        }
+
         // Если весь тактический HUD выключен (пауза) — прячем и кость вместе с ним.
         if (GameManager.Instance != null && GameManager.Instance.IsPaused())
+        {
+            canvasGroup.alpha = 0f;
+            canvasGroup.interactable = false;
+            canvasGroup.blocksRaycasts = false;
+            return;
+        }
+
+        if (GameManager.Instance != null && GameManager.Instance.IsGameOver())
         {
             canvasGroup.alpha = 0f;
             canvasGroup.interactable = false;

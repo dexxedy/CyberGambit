@@ -14167,9 +14167,15 @@ MonoBehaviour:
   muzzleFlashVfxPrefab: {fileID: 8570617819391195996, guid: e84c9d34cc06bac4aa60c88ac49fa8ad, type: 3}
   tracerVfxPrefab: {fileID: 5877415797716960729, guid: 2f9b3c5db8049014fb59e8f84992bc7b, type: 3}
   impactVfxPrefab: {fileID: 5006029902303117440, guid: 52495e0eab84db846ae79befb32a336f, type: 3}
+  tracerLineWidth: 0.06
   vfxRayMask:
     serializedVersion: 2
     m_Bits: 4294967295
+  fireSound: {fileID: 0}
+  reloadSound: {fileID: 0}
+  fireSoundVolume: 1
+  reloadSoundVolume: 1
+  postFireReloadSoundDelay: 0.4
   fireShakeDuration: 0.08
   fireShakeMagnitude: 0.03
   ammoInMag: 15
@@ -18803,7 +18809,7 @@ MonoBehaviour:
   maxAnimationSpeed: 1.2
   useDeathAnimation: 1
   deathAnimatorTrigger: Die
-  deathDestroyDelaySeconds: 3
+  deathDestroyDelaySeconds: 1.2
   remainingSteps: 0
   remainingMoveMeters: 0
   constrainActionMovementToNavMesh: 1
@@ -18819,6 +18825,11 @@ MonoBehaviour:
   snapGroundYClearance: 0.08
   takeDamageSound: {fileID: 8300000, guid: 1500a59580468ea498dd4af0dad4b92d, type: 3}
   unitDeathSound: {fileID: 8300000, guid: d5d1168b7f6e63d4dbe1df69b73e27c4, type: 3}
+  unitMoveSound: {fileID: 8300000, guid: c4f90ea03221f5443a7a7390f33ebc6a, type: 3}
+  unitMoveSoundVolume: 0.18
+  unitMoveSoundMinSpeed: 0.15
+  bishopFireSound: {fileID: 8300000, guid: de208991cdb234e44a3288a4349630c2, type: 3}
+  bishopReloadSound: {fileID: 8300000, guid: 0146ba69f148ce745b3e40f92be3dc5b, type: 3}
   unitAudioSource: {fileID: 0}
   unitDisplayNameOverride: 
   tacticalPortrait: {fileID: -268473049, guid: d473f79692665264ebbcf18595c88046, type: 3}
@@ -18828,6 +18839,9 @@ MonoBehaviour:
   attackStateName: attack
   attackDamageStartTime: 0.3
   attackDamageEndTime: 0.5
+  rangedShootStateName: BishopShoot
+  rangedShootFireNormalizedTime: 0.72
+  rangedShootAnimTimeoutSeconds: 1.5
 --- !u!114 &-7531796894689040034
 MonoBehaviour:
   m_ObjectHideFlags: 0

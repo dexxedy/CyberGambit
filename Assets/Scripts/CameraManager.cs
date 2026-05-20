@@ -1108,9 +1108,17 @@ public class CameraManager : MonoBehaviour
     {
         StopAllCoroutines(); // Останавливаем таймеры
         isGameEnded = true; // Блокируем Update
+        HideTurnHudForGameOver();
         // Гарантируем, что курсор свободен
         Cursor.lockState = CursorLockMode.None;
         Cursor.visible = true;
+    }
+
+    /// <summary>Скрывает панель «ход» на CameraManager (если назначена в сцене).</summary>
+    public void HideTurnHudForGameOver()
+    {
+        if (turnPanel != null)
+            turnPanel.SetActive(false);
     }
     
     /// <summary>

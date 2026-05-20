@@ -1,3 +1,4 @@
+using System.Collections;
 using UnityEngine;
 using UnityEngine.AI;
 
@@ -14,8 +15,18 @@ public class Weapon : MonoBehaviour
     [SerializeField] private GameObject muzzleFlashVfxPrefab;
     [SerializeField] private GameObject tracerVfxPrefab;
     [SerializeField] private GameObject impactVfxPrefab;
+    [Tooltip("Толщина LineRenderer трассера (если префаб трассера с LineRenderer).")]
+    [SerializeField] private float tracerLineWidth = 0.06f;
     [Tooltip("Какие слои считаем 'поверхностями' для попадания/трассера. Если не трогать — будет Everything.")]
     [SerializeField] private LayerMask vfxRayMask = ~0;
+
+    [Header("Audio (Bishop / ranged)")]
+    [SerializeField] private AudioClip fireSound;
+    [SerializeField] private AudioClip reloadSound;
+    [Range(0f, 1f)] [SerializeField] private float fireSoundVolume = 1f;
+    [Range(0f, 1f)] [SerializeField] private float reloadSoundVolume = 1f;
+    [Tooltip("Пауза после выстрела, затем звук перезарядки (до автоперезарядки при пустом магазине).")]
+    [SerializeField] private float postFireReloadSoundDelay = 0.4f;
     [Header("Camera shake (optional)")]
     [SerializeField] private float fireShakeDuration = 0.08f;
     [SerializeField] private float fireShakeMagnitude = 0.03f;
@@ -27,8 +38,12 @@ public class Weapon : MonoBehaviour
 
     private float nextFireTime;
     private float reloadEndTime;
+    private Unit ownerUnit;
     /// <summary>Если в префабе не проставили muzzle — ищем по имени под иерархией оружия.</summary>
     private Transform runtimeMuzzleCache;
+
+    public float FireCooldownRemaining => Mathf.Max(0f, nextFireTime - Time.time);
+    public bool IsOnFireCooldown => Time.time < nextFireTime;
 
     public RangedWeaponConfig Config => config;
     public Transform Muzzle => muzzle != null ? muzzle : ResolveRuntimeMuzzle();
@@ -36,6 +51,8 @@ public class Weapon : MonoBehaviour
     public int AmmoReserve => ammoReserve;
     public bool IsReloading => isReloading;
     public int MagazineSize => config != null ? config.magazineSize : 0;
+
+    public void SetOwnerUnit(Unit unit) => ownerUnit = unit;
 
     public void InitializeFromConfigIfNeeded()
     {
@@ -47,7 +64,7 @@ public class Weapon : MonoBehaviour
         }
     }
 
-    public bool TryStartReload()
+    public bool TryStartReload(bool playSoundAtStart = true)
     {
         if (config == null) return false;
         if (isReloading) return false;
@@ -55,7 +72,17 @@ public class Weapon : MonoBehaviour
         if (ammoReserve <= 0) return false;
         isReloading = true;
         reloadEndTime = Time.time + Mathf.Max(0f, config.reloadTimeSeconds);
+        if (playSoundAtStart)
+            PlayReloadSound();
         return true;
+    }
+
+    /// <summary>Автоперезарядка при пустом магазине (выстрел, бот, и т.д.).</summary>
+    public void TryAutoReloadIfEmpty()
+    {
+        if (config == null || isReloading) return;
+        if (ammoInMag > 0) return;
+        TryStartReload();
     }
 
     public void TickReload()
@@ -90,10 +117,15 @@ public class Weapon : MonoBehaviour
     public bool TryFire(Unit owner, Vector3 origin, Vector3 direction)
     {
         if (owner == null) return false;
+        ownerUnit = owner;
         InitializeFromConfigIfNeeded();
         TickReload();
 
-        if (!CanFire()) return false;
+        if (!CanFire())
+        {
+            TryAutoReloadIfEmpty();
+            return false;
+        }
 
         float interval = config.FireIntervalSeconds;
         nextFireTime = Time.time + Mathf.Max(0f, interval);
@@ -103,6 +135,7 @@ public class Weapon : MonoBehaviour
         int baseDamage = Mathf.Max(0, config.damagePerHit);
 
         SpawnMuzzleFlash();
+        PlayFireSound();
         DoCameraShake();
 
         Transform muzzleXf = Muzzle;
@@ -138,8 +171,17 @@ public class Weapon : MonoBehaviour
             SpawnImpact(hitPoint, hitNormal);
 
         ammoInMag = Mathf.Max(0, ammoInMag - 1);
+
+        // Звук перезарядки после выстрела — только Guardian (и танк в TankController). Bishop: R или пустой магазин.
+        if (owner != null && owner.chessType == ChessUnitType.Guardian && ownerUnit != null)
+            ownerUnit.SchedulePostFireWeaponAudio(this, postFireReloadSoundDelay);
+        else
+            TryAutoReloadIfEmpty();
+
         return true;
     }
+
+    public float GetPostFireReloadSoundDelay() => Mathf.Max(0.05f, postFireReloadSoundDelay);
 
     private void SpawnMuzzleFlash()
     {
@@ -182,6 +224,9 @@ public class Weapon : MonoBehaviour
         {
             lr.useWorldSpace = true;
             lr.positionCount = 2;
+            float w = Mathf.Max(0.001f, tracerLineWidth);
+            lr.startWidth = w;
+            lr.endWidth = w;
             lr.SetPosition(0, from);
             lr.SetPosition(1, to);
             AutoDestroyVfx(go, lr);
@@ -204,6 +249,68 @@ public class Weapon : MonoBehaviour
         if (fireShakeDuration <= 0f || fireShakeMagnitude <= 0f) return;
         if (CameraShake.Instance == null) return;
         CameraShake.Instance.Shake(fireShakeDuration, fireShakeMagnitude);
+    }
+
+    private void PlayFireSound()
+    {
+        PlayCombatClip(ResolveFireSound(), fireSoundVolume);
+    }
+
+    private void PlayReloadSound()
+    {
+        PlayCombatClip(ResolveReloadSound(), reloadSoundVolume);
+    }
+
+    private AudioClip ResolveFireSound()
+    {
+        if (fireSound != null) return fireSound;
+
+        CombatSfxLibrary lib = CombatSfxLibrary.Instance;
+        if (ownerUnit != null && lib != null)
+        {
+            if (ownerUnit.chessType == ChessUnitType.Guardian && lib.GetGuardianFire() != null)
+                return lib.GetGuardianFire();
+        }
+
+        return ownerUnit != null ? ownerUnit.GetBishopFireSoundFallback() : null;
+    }
+
+    private AudioClip ResolveReloadSound()
+    {
+        if (reloadSound != null) return reloadSound;
+
+        CombatSfxLibrary lib = CombatSfxLibrary.Instance;
+        if (ownerUnit != null && lib != null)
+        {
+            if (ownerUnit.chessType == ChessUnitType.Guardian && lib.GetGuardianReload() != null)
+                return lib.GetGuardianReload();
+        }
+
+        return ownerUnit != null ? ownerUnit.GetBishopReloadSoundFallback() : null;
+    }
+
+    /// <summary>Звук перезарядки после выстрела (вызывается из Unit).</summary>
+    public void PlayPostFireReloadSound()
+    {
+        PlayReloadSound();
+    }
+
+    /// <summary>Тихая перезарядка после того, как SFX уже проигран.</summary>
+    public void TryStartReloadAfterPostFireAudio()
+    {
+        if (ammoInMag > 0) return;
+        TryStartReload(playSoundAtStart: false);
+    }
+
+    private void PlayCombatClip(AudioClip clip, float volumeScale)
+    {
+        if (clip == null || volumeScale <= 0f) return;
+        Unit host = ownerUnit;
+        if (host == null) return;
+        AudioSource src = host.GetCombatAudioSource();
+        if (src == null) return;
+        float vol = (AudioManager.Instance != null ? AudioManager.Instance.SFXVolume : 1f) * volumeScale;
+        src.PlayOneShot(clip, vol);
     }
 
     private static void AutoDestroyVfx(GameObject go, LineRenderer line = null)

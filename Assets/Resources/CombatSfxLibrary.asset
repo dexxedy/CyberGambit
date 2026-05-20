@@ -1,0 +1,20 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a1b2c3d4e5f6478990abcdef12345601, type: 3}
+  m_Name: CombatSfxLibrary
+  m_EditorClassIdentifier: Assembly-CSharp::CombatSfxLibrary
+  guardianFire: {fileID: 8300000, guid: de208991cdb234e44a3288a4349630c2, type: 3}
+  guardianReload: {fileID: 8300000, guid: 0146ba69f148ce745b3e40f92be3dc5b, type: 3}
+  unitMove: {fileID: 8300000, guid: c4f90ea03221f5443a7a7390f33ebc6a, type: 3}
+  tankFire: {fileID: 8300000, guid: f73a485e7404ad943a2805cc3c6cf7d5, type: 3}
+  tankReload: {fileID: 8300000, guid: b04c1bb1f2f2f57438de7b0e68791d1e, type: 3}
+  tankMove: {fileID: 8300000, guid: 8d6ff98f506973c4097aa69293b3ffb9, type: 3}

@@ -18,7 +18,8 @@ MonoBehaviour:
     m_Bits: 8
   friendlyFire: 0
   damagePerHit: 12
-  rpm: 450
+  secondsBetweenShots: 0.45
+  rpm: 0
   magazineSize: 30
   startingAmmoInMag: 30
   startingReserveAmmo: 90

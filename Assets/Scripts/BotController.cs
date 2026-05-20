@@ -1090,8 +1090,12 @@ public class BotController : MonoBehaviour
         CharacterController controller = unit.GetComponent<CharacterController>();
         float remaining = Mathf.Max(0f, maxDistanceMeters);
 
-        // Анимация движения для бот-перемещения (юнит не isControlled, поэтому Unit.Update() её не крутит).
-        unit.SetExternalMoveAnimation(true);
+        // Анимация и звук хода (юнит не isControlled, поэтому Unit.Update() их не крутит).
+        float moveSpeed = Mathf.Max(0.1f, unit.MoveSpeed);
+        Mission2.TankController tankCtrl = unit.GetComponent<Mission2.TankController>();
+        unit.SetExternalMoveAnimation(true, moveSpeed);
+        if (tankCtrl != null && tankCtrl.enabled)
+            tankCtrl.SetBotPathMoveAudio(true, moveSpeed);
 
         // Начинаем с текущей позиции (не обязательно совпадает с corners[0]).
         Vector3 current = unit.transform.position;
@@ -1142,6 +1146,8 @@ public class BotController : MonoBehaviour
 
         unit.ConsumeMoveMeters(maxDistanceMeters - Mathf.Max(0f, remaining));
         unit.RefreshGridPositionFromWorld();
+        if (tankCtrl != null && tankCtrl.enabled)
+            tankCtrl.SetBotPathMoveAudio(false, 0f);
         unit.SetExternalMoveAnimation(false);
     }
 
@@ -1873,30 +1879,13 @@ public class BotController : MonoBehaviour
             RotateTowardsTarget(attacker, target.transform.position);
             yield return new WaitForSeconds(attackDelay);
 
-            Vector3 origin = ranged.Muzzle != null ? ranged.Muzzle.position : (attacker.transform.position + Vector3.up * visionEyeOffsetY);
-            Vector3 aimPoint = target.transform.position + Vector3.up * 1.0f;
-            Vector3 dir = (aimPoint - origin);
-            if (dir.sqrMagnitude < 0.0001f) yield break;
-            dir.Normalize();
-
-            // если пустой магазин — пробуем перезарядиться, иначе стрелять
-            if (ranged.AmmoInMag <= 0)
+            attacker.Attack(target);
+            if (debugMission1Bot)
             {
-                ranged.TryStartReload();
-                // небольшой "такт" на начало перезарядки
-                yield return new WaitForSeconds(0.15f);
-                yield break;
+                Weapon w = attacker.GetEquippedWeapon();
+                Debug.Log($"[Mission1Bot] RangedFire attacker={attacker.name} target={target.name} ammo={w?.AmmoInMag}/{w?.AmmoReserve}");
             }
-
-            bool fired = ranged.TryFire(attacker, origin, dir);
-            if (debugMission1Bot) Debug.Log($"[Mission1Bot] RangedFire attacker={attacker.name} target={target.name} fired={fired} ammo={ranged.AmmoInMag}/{ranged.AmmoReserve}");
-            if (fired && attacker.chessType == ChessUnitType.Guardian)
-            {
-                Animator anim = attacker.GetComponent<Animator>();
-                if (anim != null)
-                    anim.SetTrigger("Shoot");
-            }
-            yield return new WaitForSeconds(0.2f);
+            yield return new WaitForSeconds(0.55f);
             yield break;
         }
 

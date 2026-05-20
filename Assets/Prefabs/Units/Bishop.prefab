@@ -2095,9 +2095,15 @@ MonoBehaviour:
   muzzleFlashVfxPrefab: {fileID: 8570617819391195996, guid: e84c9d34cc06bac4aa60c88ac49fa8ad, type: 3}
   tracerVfxPrefab: {fileID: 5877415797716960729, guid: 2f9b3c5db8049014fb59e8f84992bc7b, type: 3}
   impactVfxPrefab: {fileID: 5006029902303117440, guid: 52495e0eab84db846ae79befb32a336f, type: 3}
+  tracerLineWidth: 0.17
   vfxRayMask:
     serializedVersion: 2
     m_Bits: 4294967295
+  fireSound: {fileID: 0}
+  reloadSound: {fileID: 0}
+  fireSoundVolume: 1
+  reloadSoundVolume: 1
+  postFireReloadSoundDelay: 0.4
   fireShakeDuration: 0.08
   fireShakeMagnitude: 0.03
   ammoInMag: 15
@@ -7959,6 +7965,7 @@ GameObject:
   - component: {fileID: 7709277487267823641}
   - component: {fileID: 6695986115786977592}
   - component: {fileID: -5064905208343261603}
+  - component: {fileID: -3036424525815405329}
   m_Layer: 0
   m_Name: Bishop
   m_TagString: Untagged
@@ -8101,6 +8108,11 @@ MonoBehaviour:
   snapGroundYClearance: 0.08
   takeDamageSound: {fileID: 8300000, guid: 1500a59580468ea498dd4af0dad4b92d, type: 3}
   unitDeathSound: {fileID: 8300000, guid: d5d1168b7f6e63d4dbe1df69b73e27c4, type: 3}
+  unitMoveSound: {fileID: 8300000, guid: c4f90ea03221f5443a7a7390f33ebc6a, type: 3}
+  unitMoveSoundVolume: 0.154
+  unitMoveSoundMinSpeed: 0.15
+  bishopFireSound: {fileID: 8300000, guid: 65dce5d78566ec24cb8e5e63ed8e434f, type: 3}
+  bishopReloadSound: {fileID: 8300000, guid: 6cbcddc75570f164cbc9d500f3f077e4, type: 3}
   unitAudioSource: {fileID: 0}
   unitDisplayNameOverride: 
   tacticalPortrait: {fileID: 1680124069, guid: 1503df353610a344bb3370b2d0c89d84, type: 3}
@@ -8110,6 +8122,9 @@ MonoBehaviour:
   attackStateName: attack
   attackDamageStartTime: 0.3
   attackDamageEndTime: 0.5
+  rangedShootStateName: BishopShoot
+  rangedShootFireNormalizedTime: 1
+  rangedShootAnimTimeoutSeconds: 0.3
 --- !u!114 &-5064905208343261603
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -8192,6 +8207,18 @@ MonoBehaviour:
   m_DefaultActionMap: Player
   m_SplitScreenIndex: -1
   m_Camera: {fileID: 0}
+--- !u!114 &-3036424525815405329
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5526962948719103936}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 02b2fae23be4a6f4a957d7cc302dab68, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::UnitAbilities
 --- !u!1 &5544999221958525215
 GameObject:
   m_ObjectHideFlags: 0

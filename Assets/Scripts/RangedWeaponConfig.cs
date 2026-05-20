@@ -13,8 +13,10 @@ public class RangedWeaponConfig : ScriptableObject
     [Min(0)] public int damagePerHit = 12;
 
     [Header("Fire Rate")]
-    [Tooltip("Rounds per minute. 600 RPM ≈ 0.1s между выстрелами.")]
-    [Min(1f)] public float rpm = 450f;
+    [Tooltip("Минимальная пауза между выстрелами (сек). Главная настройка анти-спама.")]
+    [Min(0.05f)] public float secondsBetweenShots = 0.45f;
+    [Tooltip("Опционально: если > 0, интервал = max(secondsBetweenShots, 60/RPM). 0 = только secondsBetweenShots.")]
+    [Min(0f)] public float rpm = 0f;
 
     [Header("Ammo")]
     [Min(1)] public int magazineSize = 30;
@@ -22,6 +24,15 @@ public class RangedWeaponConfig : ScriptableObject
     [Min(0)] public int startingReserveAmmo = 90;
     [Min(0f)] public float reloadTimeSeconds = 2.0f;
 
-    public float FireIntervalSeconds => 60f / Mathf.Max(1f, rpm);
+    public float FireIntervalSeconds
+    {
+        get
+        {
+            float interval = Mathf.Max(0.05f, secondsBetweenShots);
+            if (rpm > 0f)
+                interval = Mathf.Max(interval, 60f / rpm);
+            return interval;
+        }
+    }
 }
 

@@ -27,6 +27,12 @@ public class TacticalFlagMarkersController : MonoBehaviour
     {
         if (CameraManager.Instance == null) return;
         if (GameManager.Instance != null && GameManager.Instance.IsPaused()) return;
+        if (GameManager.Instance != null && GameManager.Instance.IsGameOver())
+        {
+            if (markersRoot != null)
+                markersRoot.gameObject.SetActive(false);
+            return;
+        }
         if (markersRoot == null || markerPrefab == null) return;
 
         bool tactical = !CameraManager.Instance.IsActionMode();

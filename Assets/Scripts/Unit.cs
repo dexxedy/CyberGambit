@@ -84,6 +84,17 @@ public class Unit : MonoBehaviour
     [Header("Combat Sounds")]
     [SerializeField] private AudioClip takeDamageSound; // Звук получения урона
     [SerializeField] private AudioClip unitDeathSound; // Звук смерти юнита
+    [Tooltip("Зацикленный звук хода в экшене (игрок). Пусто — CombatSfxLibrary.unitMove (footstep). Танк использует TankController.")]
+    [SerializeField] private AudioClip unitMoveSound;
+    [Range(0f, 1f)] [SerializeField] private float unitMoveSoundVolume = 0.55f;
+    [Tooltip("Мин. скорость шага (м/с) для включения звука перемещения.")]
+    [SerializeField] private float unitMoveSoundMinSpeed = 0.15f;
+    private bool unitMoveSoundPlaying;
+    private bool externalMoveSoundActive;
+
+    [Header("Bishop — звуки (fallback, если пусто на Weapon)")]
+    [SerializeField] private AudioClip bishopFireSound;
+    [SerializeField] private AudioClip bishopReloadSound;
     
     
     [Header("Audio Source (Optional)")]
@@ -104,6 +115,14 @@ public class Unit : MonoBehaviour
     [SerializeField] private string attackStateName = "attack"; // Имя состояния атаки в Animator
     [SerializeField] private float attackDamageStartTime = 0.2f; // Нормализованное время начала нанесения урона (0-1)
     [SerializeField] private float attackDamageEndTime = 0.8f; // Нормализованное время конца нанесения урона (0-1)
+
+    [Header("Ranged shoot animation (Bishop etc.)")]
+    [Tooltip("Состояние Animator, в котором дуло в позе выстрела (например BishopShoot).")]
+    [SerializeField] private string rangedShootStateName = "BishopShoot";
+    [Tooltip("Нормализованное время клипа выстрела (0–1), когда наносится hitscan и трассер с дула.")]
+    [SerializeField] [Range(0f, 1f)] private float rangedShootFireNormalizedTime = 0.72f;
+    [Tooltip("Макс. ожидание входа в состояние выстрела (сек).")]
+    [SerializeField] private float rangedShootAnimTimeoutSeconds = 1.5f;
 
     [Header("Ability Effects")]
     private bool hasReflectionActive = false;        // Слон - отражение урона
@@ -128,6 +147,9 @@ public class Unit : MonoBehaviour
 
     private bool isDeadOrDying;
     private Animator animator;
+    private Coroutine rangedFireAnimRoutine;
+    private Coroutine postFireWeaponAudioRoutine;
+    private Unit pendingRangedAimUnit;
 
     void Start()
     {
@@ -148,6 +170,9 @@ public class Unit : MonoBehaviour
         {
             EquipWeaponPrefab(startingWeaponPrefab);
         }
+
+        if (equippedWeapon != null)
+            equippedWeapon.SetOwnerUnit(this);
     }
     
     void Awake()
@@ -250,6 +275,8 @@ public class Unit : MonoBehaviour
             controller.Move(playerVelocity * Time.deltaTime);
         }
 
+        UpdateRangedWeaponState();
+
         // Управление только для выбранного юнита
         if (!isControlled) return;
 
@@ -267,6 +294,9 @@ public class Unit : MonoBehaviour
         bool tankHandledMoveLook = tankDrive != null && tankDrive.enabled &&
             tankDrive.ApplyPlayerTankFrame(this, controller, moveInput, lookInput, moveSpeed, mouseSensitivity);
 
+        bool movedThisFrame = false;
+        float moveSpeedMps = 0f;
+
         if (!tankHandledMoveLook)
         {
             Vector3 rawMove = transform.right * moveInput.x + transform.forward * moveInput.y;
@@ -280,6 +310,8 @@ public class Unit : MonoBehaviour
                 float actualDistance = moveVector.magnitude;
                 controller.Move(moveVector);
                 ConsumeMoveMeters(actualDistance);
+                movedThisFrame = true;
+                moveSpeedMps = actualDistance / Mathf.Max(Time.deltaTime, 0.0001f);
                 if (ChessGrid.Instance != null)
                 {
                     SetCurrentGridPosition(ChessGrid.Instance.WorldToGridCoords(transform.position));
@@ -298,17 +330,17 @@ public class Unit : MonoBehaviour
             transform.Rotate(Vector3.up * mouseX);
         }
 
+        if (tankDrive == null || !tankDrive.enabled)
+            UpdateUnitMoveSound(movedThisFrame, moveSpeedMps);
+
         HandleMovementSteps();
         if (!isControlled) return;
 
-        // Перезарядка оружия по R должна работать даже без выстрела.
-        if (!hubExploreNoCombat && equippedWeapon != null && equippedWeapon.Config != null)
+        // Ручная перезарядка (R) — только у управляемого юнита.
+        if (!hubExploreNoCombat && equippedWeapon != null && equippedWeapon.Config != null
+            && Keyboard.current != null && Keyboard.current.rKey.wasPressedThisFrame)
         {
-            equippedWeapon.TickReload();
-            if (Keyboard.current != null && Keyboard.current.rKey.wasPressedThisFrame)
-            {
-                equippedWeapon.TryStartReload();
-            }
+            equippedWeapon.TryStartReload(playSoundAtStart: true);
         }
 
         if (animator != null)
@@ -335,14 +367,16 @@ public class Unit : MonoBehaviour
     }
 
     /// <summary>
-    /// Выполняет атаку (публичный метод для использования ботом и игроком)
+    /// Выполняет атаку (публичный метод для использования ботом и игроком).
     /// </summary>
-    public void Attack()
+    /// <param name="rangedAimTarget">Для бота: цель; луч идёт от дула к цели. Игрок — null (луч с action-камеры).</param>
+    public void Attack(Unit rangedAimTarget = null)
     {
         if (hubExploreNoCombat) return;
         if (equippedWeapon != null && equippedWeapon.Config != null)
         {
-            PerformEquippedWeaponFire();
+            pendingRangedAimUnit = rangedAimTarget;
+            BeginRangedAttack();
             return;
         }
 
@@ -360,31 +394,174 @@ public class Unit : MonoBehaviour
         }
     }
 
-    private void PerformEquippedWeaponFire()
+    private void BeginRangedAttack()
     {
-        Camera actionCam = CameraManager.Instance != null ? CameraManager.Instance.GetActionCamera() : null;
-        Vector3 origin;
-        Vector3 direction;
+        if (equippedWeapon == null || equippedWeapon.Config == null) return;
 
+        // Пока идёт анимация выстрела или КД — не принимаем новый выстрел (анти-спам).
+        if (rangedFireAnimRoutine != null) return;
+        if (equippedWeapon.IsOnFireCooldown) return;
+
+        equippedWeapon.InitializeFromConfigIfNeeded();
+        equippedWeapon.TickReload();
+
+        if (!equippedWeapon.CanFire())
+        {
+            equippedWeapon.TryAutoReloadIfEmpty();
+            pendingRangedAimUnit = null;
+            return;
+        }
+
+        // Бот: выстрел и SFX сразу, анимация Shoot параллельно (без ожидания клипа).
+        if (pendingRangedAimUnit != null)
+        {
+            ExecuteRangedFireOnce();
+            if (animator != null && HasAnimatorShootTrigger())
+                animator.SetTrigger("Shoot");
+            pendingRangedAimUnit = null;
+            return;
+        }
+
+        // Из прицела (ПКМ): выстрел сразу, анимация Shoot параллельно.
+        if (IsCombatAimStance())
+        {
+            ExecuteRangedFireOnce();
+            if (animator != null && HasAnimatorShootTrigger())
+                animator.SetTrigger("Shoot");
+            pendingRangedAimUnit = null;
+            return;
+        }
+
+        // Из idle/run: сначала переход в Shoot, выстрел в конце клипа (трассер с дула в позе анимации).
+        if (animator != null && HasAnimatorShootTrigger())
+        {
+            if (rangedFireAnimRoutine != null)
+                StopCoroutine(rangedFireAnimRoutine);
+            rangedFireAnimRoutine = StartCoroutine(RangedFireAfterShootAnimation());
+            return;
+        }
+
+        ExecuteRangedFireOnce();
+        pendingRangedAimUnit = null;
+    }
+
+    private IEnumerator RangedFireAfterShootAnimation()
+    {
+        if (animator != null)
+            animator.SetTrigger("Shoot");
+
+        float elapsed = 0f;
+        bool fired = false;
+
+        while (elapsed < rangedShootAnimTimeoutSeconds)
+        {
+            if (isDeadOrDying || equippedWeapon == null)
+                break;
+
+            equippedWeapon.TickReload();
+            if (!equippedWeapon.CanFire())
+                break;
+
+            AnimatorStateInfo state = animator.GetCurrentAnimatorStateInfo(0);
+            if (animator.IsInTransition(0))
+            {
+                AnimatorStateInfo next = animator.GetNextAnimatorStateInfo(0);
+                if (next.IsName(rangedShootStateName) && next.normalizedTime >= rangedShootFireNormalizedTime)
+                {
+                    fired = ExecuteRangedFireOnce();
+                    break;
+                }
+            }
+            else if (state.IsName(rangedShootStateName) && state.normalizedTime >= rangedShootFireNormalizedTime)
+            {
+                fired = ExecuteRangedFireOnce();
+                break;
+            }
+
+            elapsed += Time.deltaTime;
+            yield return null;
+        }
+
+        if (!fired && equippedWeapon != null && equippedWeapon.CanFire())
+            ExecuteRangedFireOnce();
+
+        pendingRangedAimUnit = null;
+        rangedFireAnimRoutine = null;
+    }
+
+    private bool ExecuteRangedFireOnce()
+    {
+        if (equippedWeapon == null) return false;
+        GetRangedFireRay(out Vector3 origin, out Vector3 direction);
+        return equippedWeapon.TryFire(this, origin, direction);
+    }
+
+    private void GetRangedFireRay(out Vector3 origin, out Vector3 direction)
+    {
+        if (pendingRangedAimUnit != null && pendingRangedAimUnit.GetHealth() > 0)
+        {
+            Transform muzzle = equippedWeapon.Muzzle;
+            origin = muzzle != null
+                ? muzzle.position
+                : transform.position + Vector3.up * 1.2f;
+            Vector3 aimPoint = pendingRangedAimUnit.transform.position + Vector3.up * 1f;
+            direction = aimPoint - origin;
+            if (direction.sqrMagnitude < 0.0001f)
+                direction = transform.forward;
+            else
+                direction.Normalize();
+            return;
+        }
+
+        Camera actionCam = CameraManager.Instance != null ? CameraManager.Instance.GetActionCamera() : null;
         if (actionCam != null)
         {
-            // Hitscan и урон — строго из камеры; трассер рисуется из дула в Weapon.TryFire.
             origin = actionCam.transform.position;
             direction = actionCam.transform.forward;
-        }
-        else
-        {
-            origin = equippedWeapon.Muzzle != null ? equippedWeapon.Muzzle.position : (transform.position + Vector3.up * 1.2f);
-            direction = transform.forward;
+            return;
         }
 
-        if (equippedWeapon.TryFire(this, origin, direction))
+        origin = equippedWeapon.Muzzle != null
+            ? equippedWeapon.Muzzle.position
+            : transform.position + Vector3.up * 1.2f;
+        direction = transform.forward;
+    }
+
+    private bool IsCombatAimStance()
+    {
+        if (hubExploreNoCombat || equippedWeapon == null) return false;
+        return Mouse.current != null && Mouse.current.rightButton.isPressed;
+    }
+
+    private bool HasAnimatorShootTrigger()
+    {
+        if (animator == null) return false;
+        foreach (AnimatorControllerParameter p in animator.parameters)
         {
-            if (animator != null)
-            {
-                animator.SetTrigger("Shoot");
-            }
+            if (p.type == AnimatorControllerParameterType.Trigger && p.name == "Shoot")
+                return true;
         }
+        return false;
+    }
+
+    /// <summary>Вызывается из Animation Event на клипе BishopShoot (опционально).</summary>
+    public void AnimEvent_RangedFire()
+    {
+        if (equippedWeapon == null || !equippedWeapon.CanFire()) return;
+        ExecuteRangedFireOnce();
+        pendingRangedAimUnit = null;
+    }
+
+    private void UpdateRangedWeaponState()
+    {
+        if (hubExploreNoCombat || equippedWeapon == null || equippedWeapon.Config == null)
+        {
+            TrySetAnimatorReload(false);
+            return;
+        }
+
+        equippedWeapon.TickReload();
+        TrySetAnimatorReload(equippedWeapon.IsReloading);
     }
 
     public void EquipWeapon(Weapon weaponInstance)
@@ -397,6 +574,8 @@ public class Unit : MonoBehaviour
 
         equippedWeapon = weaponInstance;
         if (equippedWeapon == null) return;
+
+        equippedWeapon.SetOwnerUnit(this);
 
         Transform parent = weaponSocket != null ? weaponSocket : transform;
         equippedWeapon.transform.SetParent(parent, worldPositionStays: false);
@@ -503,9 +682,10 @@ public class Unit : MonoBehaviour
         if (isKing && GameManager.Instance != null)
             GameManager.Instance.EndGame(owner);
 
+        bool playDeathAnim = useDeathAnimation && TryPlayDeathAnimation();
         DisableGameplayForDeath();
 
-        if (useDeathAnimation && TryPlayDeathAnimation())
+        if (playDeathAnim)
         {
             StartCoroutine(DestroyAfterDeathPresentation());
         }
@@ -517,6 +697,19 @@ public class Unit : MonoBehaviour
 
     private void DisableGameplayForDeath()
     {
+        if (rangedFireAnimRoutine != null)
+        {
+            StopCoroutine(rangedFireAnimRoutine);
+            rangedFireAnimRoutine = null;
+        }
+        if (postFireWeaponAudioRoutine != null)
+        {
+            StopCoroutine(postFireWeaponAudioRoutine);
+            postFireWeaponAudioRoutine = null;
+        }
+        pendingRangedAimUnit = null;
+        StopUnitMoveSound();
+
         if (controller != null)
             controller.enabled = false;
 
@@ -539,14 +732,43 @@ public class Unit : MonoBehaviour
         if (animator == null)
             animator = GetComponent<Animator>();
         if (animator == null)
-            return false;
-        if (!AnimatorHasTriggerParameter(animator, deathAnimatorTrigger))
+            animator = GetComponentInChildren<Animator>(true);
+        if (animator == null)
             return false;
 
         animator.speed = 1f;
-        animator.ResetTrigger(deathAnimatorTrigger);
-        animator.SetTrigger(deathAnimatorTrigger);
-        return true;
+        animator.enabled = true;
+        animator.updateMode = AnimatorUpdateMode.Normal;
+
+        if (AnimatorHasTriggerParameter(animator, deathAnimatorTrigger))
+        {
+            animator.ResetTrigger(deathAnimatorTrigger);
+            animator.SetTrigger(deathAnimatorTrigger);
+            return true;
+        }
+
+        string deathState = GetDefaultDeathAnimatorStateName();
+        if (!string.IsNullOrEmpty(deathState))
+        {
+            int hash = Animator.StringToHash(deathState);
+            if (animator.HasState(0, hash))
+            {
+                animator.Play(hash, 0, 0f);
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private string GetDefaultDeathAnimatorStateName()
+    {
+        switch (chessType)
+        {
+            case ChessUnitType.Guardian: return "GuardianDeath";
+            case ChessUnitType.Bishop: return "BishopDeath";
+            default: return "BishopDeath";
+        }
     }
 
     private static bool AnimatorHasTriggerParameter(Animator anim, string triggerName)
@@ -741,24 +963,45 @@ public class Unit : MonoBehaviour
         }
     }
 
+    /// <summary>Bool Reload в Animator (BishopReload и др.), если параметр есть в контроллере.</summary>
+    private void TrySetAnimatorReload(bool reloading)
+    {
+        if (animator == null) return;
+        foreach (AnimatorControllerParameter p in animator.parameters)
+        {
+            if (p.type == AnimatorControllerParameterType.Bool && p.name == "Reload")
+            {
+                animator.SetBool("Reload", reloading);
+                return;
+            }
+        }
+    }
+
     /// <summary>
     /// Внешний контроль анимации движения (когда юнит двигается корутинами бота, не через input).
     /// </summary>
-    public void SetExternalMoveAnimation(bool moving)
+    /// <param name="speedMps">Скорость для звука шага; &lt;= 0 — взять moveSpeed юнита.</param>
+    public void SetExternalMoveAnimation(bool moving, float speedMps = 0f)
     {
-        if (animator == null) return;
-        animator.SetFloat("Speed", moving ? 1f : 0f);
+        if (animator != null)
+        {
+            animator.SetFloat("Speed", moving ? 1f : 0f);
 
-        if (moving && baseMoveSpeed > 0f)
-        {
-            float animationSpeedMultiplier = moveSpeed / baseMoveSpeed;
-            animationSpeedMultiplier = Mathf.Clamp(animationSpeedMultiplier, minAnimationSpeed, maxAnimationSpeed);
-            animator.speed = animationSpeedMultiplier;
+            if (moving && baseMoveSpeed > 0f)
+            {
+                float animationSpeedMultiplier = moveSpeed / baseMoveSpeed;
+                animationSpeedMultiplier = Mathf.Clamp(animationSpeedMultiplier, minAnimationSpeed, maxAnimationSpeed);
+                animator.speed = animationSpeedMultiplier;
+            }
+            else if (!moving)
+            {
+                animator.speed = 1.0f;
+            }
         }
-        else if (!moving)
-        {
-            animator.speed = 1.0f;
-        }
+
+        externalMoveSoundActive = moving;
+        float audioSpeed = moving ? (speedMps > 0f ? speedMps : moveSpeed) : 0f;
+        UpdateUnitMoveSound(moving, audioSpeed);
     }
 
     public void SetControlled(bool controlled)
@@ -780,6 +1023,8 @@ public class Unit : MonoBehaviour
             Mission2.TankController tankCtrl = GetComponent<Mission2.TankController>();
             if (tankCtrl != null)
                 tankCtrl.NotifyTankControlEnded();
+
+            StopUnitMoveSound();
 
             // Сбрасываем ввод, чтобы не "залипала" анимация бега после завершения хода
             moveInput = Vector2.zero;
@@ -995,6 +1240,121 @@ public class Unit : MonoBehaviour
         }
         return unitAudioSource;
     }
+
+    public AudioClip GetBishopFireSoundFallback() => bishopFireSound;
+    public AudioClip GetBishopReloadSoundFallback() => bishopReloadSound;
+
+    public static void StopAllUnitMoveSounds()
+    {
+        Unit[] units = UnityEngine.Object.FindObjectsByType<Unit>(FindObjectsInactive.Exclude);
+        foreach (Unit u in units)
+        {
+            if (u != null)
+                u.StopUnitMoveSound();
+        }
+    }
+
+    private AudioClip ResolveUnitMoveClip()
+    {
+        if (unitMoveSound != null) return unitMoveSound;
+        CombatSfxLibrary lib = CombatSfxLibrary.Instance;
+        return lib != null ? lib.GetUnitMove() : null;
+    }
+
+    private bool CanPlayUnitMoveAudio()
+    {
+        if (IsTankUnit || hubExploreNoCombat) return false;
+        if (GetComponent<Mission2.TankController>() != null) return false;
+        if (GameManager.Instance == null) return false;
+        if (GameManager.Instance.IsPaused()) return false;
+        if (GameManager.Instance.currentPlayer != owner) return false;
+
+        if (externalMoveSoundActive && GameManager.Instance.IsBotTurn())
+            return true;
+
+        if (CameraManager.Instance == null) return false;
+        if (!isControlled || !IsControlled()) return false;
+        if (CameraManager.Instance.GetCurrentControlledUnit() != this) return false;
+        if (!CameraManager.Instance.IsActionMode()) return false;
+        return true;
+    }
+
+    public void StopUnitMoveSound()
+    {
+        AudioSource src = GetCombatAudioSource();
+        AudioClip moveClip = ResolveUnitMoveClip();
+        if (src != null && unitMoveSoundPlaying)
+        {
+            if (moveClip != null && src.clip == moveClip && src.isPlaying)
+                src.Stop();
+            src.loop = false;
+        }
+        unitMoveSoundPlaying = false;
+    }
+
+    private void UpdateUnitMoveSound(bool moving, float speedMps)
+    {
+        if (!CanPlayUnitMoveAudio())
+        {
+            StopUnitMoveSound();
+            return;
+        }
+
+        AudioClip moveClip = ResolveUnitMoveClip();
+        AudioSource src = GetCombatAudioSource();
+        if (src == null || moveClip == null)
+        {
+            unitMoveSoundPlaying = false;
+            return;
+        }
+
+        bool shouldPlay = moving && speedMps >= unitMoveSoundMinSpeed;
+        if (shouldPlay && !unitMoveSoundPlaying)
+        {
+            src.clip = moveClip;
+            src.loop = true;
+            float vol = (AudioManager.Instance != null ? AudioManager.Instance.SFXVolume : 1f) * unitMoveSoundVolume;
+            src.volume = vol;
+            if (!src.isPlaying || src.clip != moveClip)
+                src.Play();
+            unitMoveSoundPlaying = true;
+        }
+        else if (!shouldPlay && unitMoveSoundPlaying)
+        {
+            if (src.clip == moveClip && src.isPlaying)
+                src.Stop();
+            src.loop = false;
+            unitMoveSoundPlaying = false;
+        }
+    }
+
+    private void OnDisable()
+    {
+        StopUnitMoveSound();
+    }
+
+    /// <summary>После выстрела: пауза → звук перезарядки → автоперезарядка при пустом магазине.</summary>
+    public void SchedulePostFireWeaponAudio(Weapon weapon, float reloadSoundDelay)
+    {
+        if (weapon == null) return;
+        if (postFireWeaponAudioRoutine != null)
+            StopCoroutine(postFireWeaponAudioRoutine);
+        postFireWeaponAudioRoutine = StartCoroutine(PostFireWeaponAudioRoutine(weapon, reloadSoundDelay));
+    }
+
+    private IEnumerator PostFireWeaponAudioRoutine(Weapon weapon, float reloadSoundDelay)
+    {
+        yield return new WaitForSeconds(Mathf.Max(0.05f, reloadSoundDelay));
+        if (weapon == null || isDeadOrDying)
+        {
+            postFireWeaponAudioRoutine = null;
+            yield break;
+        }
+
+        weapon.PlayPostFireReloadSound();
+        weapon.TryStartReloadAfterPostFireAudio();
+        postFireWeaponAudioRoutine = null;
+    }
     
     /// <summary>
     /// Воспроизводит звук получения урона с небольшой задержкой после атаки
@@ -1086,12 +1446,8 @@ public class Unit : MonoBehaviour
         duration = Mathf.Clamp(duration, 0.5f, 3f); // Увеличиваем максимальное время для плавности
         
         float elapsedTime = 0f;
-        
-        // Включаем анимацию движения
-        if (animator != null)
-        {
-            animator.SetFloat("Speed", 1f);
-        }
+
+        SetExternalMoveAnimation(true, unitMoveSpeed);
         
         // Поворачиваем юнита к цели
         Vector3 direction = (targetWorldPos - startPos).normalized;
@@ -1139,12 +1495,7 @@ public class Unit : MonoBehaviour
         SetCurrentGridPosition(targetGridPos);
         SnapToGrid();
         ConsumeMoveMeters(distance);
-        
-        // Останавливаем анимацию движения
-        if (animator != null)
-        {
-            animator.SetFloat("Speed", 0f);
-        }
+        SetExternalMoveAnimation(false);
     }
     
     public void RefreshGridPositionFromWorld()

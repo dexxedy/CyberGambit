@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -72,6 +73,20 @@ namespace Mission2
         [SerializeField] private GameObject muzzleFlashVfxPrefab;
         [SerializeField] private GameObject tracerVfxPrefab;
         [SerializeField] private GameObject impactVfxPrefab;
+        [Tooltip("Толщина LineRenderer трассера.")]
+        [SerializeField] private float tracerLineWidth = 0.12f;
+
+        [Header("Audio")]
+        [SerializeField] private AudioClip tankFireSound;
+        [SerializeField] private AudioClip tankReloadSound;
+        [SerializeField] private AudioClip tankMoveSound;
+        [Range(0f, 1f)] [SerializeField] private float tankFireSoundVolume = 1f;
+        [Range(0f, 1f)] [SerializeField] private float tankReloadSoundVolume = 1f;
+        [Range(0f, 1f)] [SerializeField] private float tankMoveSoundVolume = 0.55f;
+        [Tooltip("Мин. скорость (м/с эквивалент) для зацикленного звука хода.")]
+        [SerializeField] private float moveSoundMinSpeed = 0.15f;
+        [Tooltip("Задержка звука перезарядки после выстрела (сек).")]
+        [SerializeField] private float reloadSoundDelayAfterFire = 0.45f;
 
         private Unit unit;
         private CharacterController characterController;
@@ -89,7 +104,20 @@ namespace Mission2
         private float cumulativeAimYawOffsetDeg;
         private float gunPitchDegIndependent;
 
+        private bool tankMoveSoundPlaying;
+        private Coroutine tankPostFireAudioRoutine;
+
         public bool HasPlannedPath => pathPoints.Count >= 2 && pathIndex < pathPoints.Count;
+
+        public static void StopAllTankMoveSounds()
+        {
+            TankController[] tanks = Object.FindObjectsByType<TankController>(FindObjectsInactive.Exclude);
+            foreach (TankController tank in tanks)
+            {
+                if (tank != null)
+                    tank.StopTankMoveSound();
+            }
+        }
 
         private void Awake()
         {
@@ -202,6 +230,12 @@ namespace Mission2
         public void NotifyTankControlEnded()
         {
             tankAimInitialized = false;
+            StopTankMoveSound();
+            if (tankPostFireAudioRoutine != null)
+            {
+                StopCoroutine(tankPostFireAudioRoutine);
+                tankPostFireAudioRoutine = null;
+            }
         }
 
         /// <summary>
@@ -227,7 +261,13 @@ namespace Mission2
             float allowedDistance = Mathf.Min(requestedDistance, hostUnit.GetRemainingMoveMeters());
             Vector3 moveVector = moveWorld * allowedDistance;
             moveVector = hostUnit.ConstrainActionMoveToNavMesh(moveVector);
-            if (moveVector.sqrMagnitude > 0f)
+            bool isMoving = moveVector.sqrMagnitude > 0f;
+            if (CanPlayTankMoveAudio())
+                UpdateTankMoveSound(isMoving, allowedDistance > 0f ? allowedDistance / Mathf.Max(Time.deltaTime, 0.0001f) : 0f);
+            else
+                StopTankMoveSound();
+
+            if (isMoving)
             {
                 float actualDistance = moveVector.magnitude;
                 cc.Move(moveVector);
@@ -462,6 +502,23 @@ namespace Mission2
             }
 
             nextFireTime = Time.time + Mathf.Max(0.05f, fireCooldownSeconds);
+            ScheduleTankPostFireAudio();
+        }
+
+        private void ScheduleTankPostFireAudio()
+        {
+            PlayTankFireSound();
+            if (tankPostFireAudioRoutine != null)
+                StopCoroutine(tankPostFireAudioRoutine);
+            tankPostFireAudioRoutine = StartCoroutine(TankPostFireAudioRoutine());
+        }
+
+        private IEnumerator TankPostFireAudioRoutine()
+        {
+            float delay = Mathf.Clamp(reloadSoundDelayAfterFire, 0.1f, Mathf.Max(0.15f, fireCooldownSeconds * 0.85f));
+            yield return new WaitForSeconds(delay);
+            PlayTankClip(ResolveTankReloadClip(), tankReloadSoundVolume);
+            tankPostFireAudioRoutine = null;
         }
 
         private void SpawnMuzzleFlash(Vector3 pos, Quaternion rot)
@@ -484,6 +541,9 @@ namespace Mission2
             {
                 lr.useWorldSpace = true;
                 lr.positionCount = 2;
+                float w = Mathf.Max(0.001f, tracerLineWidth);
+                lr.startWidth = w;
+                lr.endWidth = w;
                 lr.SetPosition(0, from);
                 lr.SetPosition(1, to);
                 tracerTtl = 0.12f;
@@ -504,6 +564,140 @@ namespace Mission2
             if (fireShakeDuration <= 0f || fireShakeMagnitude <= 0f) return;
             if (CameraShake.Instance == null) return;
             CameraShake.Instance.Shake(fireShakeDuration, fireShakeMagnitude);
+        }
+
+        private void PlayTankFireSound()
+        {
+            PlayTankClip(ResolveTankFireClip(), tankFireSoundVolume);
+        }
+
+        private AudioClip ResolveTankFireClip()
+        {
+            if (tankFireSound != null) return tankFireSound;
+            CombatSfxLibrary lib = CombatSfxLibrary.Instance;
+            return lib != null ? lib.GetTankFire() : null;
+        }
+
+        private AudioClip ResolveTankReloadClip()
+        {
+            if (tankReloadSound != null) return tankReloadSound;
+            CombatSfxLibrary lib = CombatSfxLibrary.Instance;
+            return lib != null ? lib.GetTankReload() : null;
+        }
+
+        private AudioClip ResolveTankMoveClip()
+        {
+            if (tankMoveSound != null) return tankMoveSound;
+            CombatSfxLibrary lib = CombatSfxLibrary.Instance;
+            return lib != null ? lib.GetTankMove() : null;
+        }
+
+        private bool CanPlayTankMoveAudio()
+        {
+            if (CanPlayBotTankMoveAudio()) return false;
+            if (unit == null || GameManager.Instance == null || CameraManager.Instance == null)
+                return false;
+            if (GameManager.Instance.currentPlayer != unit.owner)
+                return false;
+            if (!unit.IsControlled())
+                return false;
+            if (CameraManager.Instance.GetCurrentControlledUnit() != unit)
+                return false;
+            if (!CameraManager.Instance.IsActionMode())
+                return false;
+            return true;
+        }
+
+        private bool CanPlayBotTankMoveAudio()
+        {
+            if (unit == null || GameManager.Instance == null) return false;
+            if (GameManager.Instance.IsPaused()) return false;
+            if (!GameManager.Instance.IsBotTurn()) return false;
+            if (GameManager.Instance.currentPlayer != unit.owner) return false;
+            return true;
+        }
+
+        /// <summary>Звук хода танка при перемещении по NavMesh (бот).</summary>
+        public void SetBotPathMoveAudio(bool moving, float speedMps)
+        {
+            if (!CanPlayBotTankMoveAudio())
+            {
+                StopTankMoveSound();
+                return;
+            }
+
+            float speed = moving ? Mathf.Max(speedMps, moveSoundMinSpeed) : 0f;
+            UpdateTankMoveSound(moving, speed);
+        }
+
+        public void StopTankMoveSound()
+        {
+            if (unit == null)
+            {
+                tankMoveSoundPlaying = false;
+                return;
+            }
+
+            AudioSource src = unit.GetCombatAudioSource();
+            AudioClip moveClip = ResolveTankMoveClip();
+            if (src != null && tankMoveSoundPlaying)
+            {
+                if (moveClip != null && src.clip == moveClip && src.isPlaying)
+                    src.Stop();
+                src.loop = false;
+            }
+            tankMoveSoundPlaying = false;
+        }
+
+        private void PlayTankClip(AudioClip clip, float volumeScale)
+        {
+            if (clip == null || volumeScale <= 0f || unit == null) return;
+            AudioSource src = unit.GetCombatAudioSource();
+            if (src == null) return;
+            float vol = (AudioManager.Instance != null ? AudioManager.Instance.SFXVolume : 1f) * volumeScale;
+            src.PlayOneShot(clip, vol);
+        }
+
+        private void UpdateTankMoveSound(bool moving, float speed)
+        {
+            if (unit == null) return;
+
+            AudioClip moveClip = ResolveTankMoveClip();
+            AudioSource src = unit.GetCombatAudioSource();
+            if (src == null || moveClip == null)
+            {
+                tankMoveSoundPlaying = false;
+                return;
+            }
+
+            bool shouldPlay = moving && speed >= moveSoundMinSpeed;
+            if (shouldPlay && !tankMoveSoundPlaying)
+            {
+                src.clip = moveClip;
+                src.loop = true;
+                float vol = (AudioManager.Instance != null ? AudioManager.Instance.SFXVolume : 1f) * tankMoveSoundVolume;
+                src.volume = vol;
+                if (!src.isPlaying || src.clip != moveClip)
+                    src.Play();
+                tankMoveSoundPlaying = true;
+            }
+            else if (!shouldPlay && tankMoveSoundPlaying)
+            {
+                if (src.clip == moveClip && src.isPlaying)
+                    src.Stop();
+                src.loop = false;
+                tankMoveSoundPlaying = false;
+            }
+        }
+
+        private void OnDisable()
+        {
+            StopTankMoveSound();
+            if (tankPostFireAudioRoutine != null)
+            {
+                StopCoroutine(tankPostFireAudioRoutine);
+                tankPostFireAudioRoutine = null;
+            }
         }
 
         private static void AutoDestroyVfx(GameObject go, float ttl = 2.5f)

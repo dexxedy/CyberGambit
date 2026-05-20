@@ -206,6 +206,8 @@ public class GameManager : MonoBehaviour
         // Включаем панель
         if (gameOverPanel != null) gameOverPanel.SetActive(true);
 
+        HideGameplayHudForEndScreen();
+
         // Определяем победителя и сообщение в зависимости от режима игры
         string resultMessage = "";
         Player winner = (loser == Player.Player1) ? Player.Player2 : Player.Player1;
@@ -274,11 +276,32 @@ public class GameManager : MonoBehaviour
         }
         
         if (CameraManager.Instance != null)
-        {
             CameraManager.Instance.OnGameOver();
-            
+
+        Time.timeScale = 0f;
+    }
+
+    /// <summary>Скрывает тактический HUD (кость, очередь/панель хода, иконки), когда показан экран победы/поражения.</summary>
+    private void HideGameplayHudForEndScreen()
+    {
+        if (TacticalModeUI.Instance != null)
+            TacticalModeUI.Instance.HideHUD();
+
+        if (ActionModeUI.Instance != null)
+            ActionModeUI.Instance.HideHUD();
+
+        if (CameraManager.Instance != null)
+            CameraManager.Instance.HideTurnHudForGameOver();
+
+        DiceRenderUI[] diceUis = FindObjectsByType<DiceRenderUI>(FindObjectsInactive.Include);
+        for (int i = 0; i < diceUis.Length; i++)
+        {
+            if (diceUis[i] != null)
+                diceUis[i].SetHudVisible(false);
         }
-        Time.timeScale = 0f; 
+
+        if (TacticalWorldIconsController.Instance != null)
+            TacticalWorldIconsController.Instance.SetIconsRootVisible(false);
     }
 
     // Метод для кнопки "В меню"
@@ -339,14 +362,21 @@ public class GameManager : MonoBehaviour
         if (pausePanel != null) pausePanel.SetActive(false);
         Time.timeScale = 1f;
         
-        // Показываем HUD при возобновлении игры
-        if (ActionModeUI.Instance != null)
+        // Показываем HUD при возобновлении игры (не после победы/поражения)
+        if (!isGameOver)
         {
-            ActionModeUI.Instance.ShowHUD();
-        }
-        if (TacticalModeUI.Instance != null)
-        {
-            TacticalModeUI.Instance.ShowHUD();
+            if (ActionModeUI.Instance != null)
+                ActionModeUI.Instance.ShowHUD();
+            if (TacticalModeUI.Instance != null)
+                TacticalModeUI.Instance.ShowHUD();
+            if (TacticalWorldIconsController.Instance != null)
+                TacticalWorldIconsController.Instance.SetIconsRootVisible(true);
+            DiceRenderUI[] diceUis = FindObjectsByType<DiceRenderUI>(FindObjectsInactive.Include);
+            for (int i = 0; i < diceUis.Length; i++)
+            {
+                if (diceUis[i] != null)
+                    diceUis[i].SetHudVisible(true);
+            }
         }
         
         // Восстанавливаем состояние курсора в зависимости от режима
@@ -370,6 +400,8 @@ public class GameManager : MonoBehaviour
         if (armyDeploymentPhaseActive) return;
 
         currentPlayer = (currentPlayer == Player.Player1) ? Player.Player2 : Player.Player1;
+        Mission2.TankController.StopAllTankMoveSounds();
+        Unit.StopAllUnitMoveSounds();
         ResetDiceForNextTurn();
         // Автобросок только для бота. Игрок бросает сам (см. DiceRenderUI / будущий UI).
         if (IsBotTurn())

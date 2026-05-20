@@ -79,6 +79,7 @@ MonoBehaviour:
   chessType: 0
   currentGridPosition: {x: 0, y: 0}
   isFirstMove: 1
+  combatRole: 0
   health: 100
   maxHealth: 100
   damage: 20
@@ -90,13 +91,26 @@ MonoBehaviour:
   baseMoveSpeed: 5
   minAnimationSpeed: 0.6
   maxAnimationSpeed: 1.2
+  useDeathAnimation: 1
+  deathAnimatorTrigger: Die
+  deathDestroyDelaySeconds: 3
   remainingSteps: 0
   remainingMoveMeters: 0
   constrainActionMovementToNavMesh: 1
   navMeshSampleRadius: 1.25
+  hubExploreNoCombat: 0
   snapToGridOnStart: 0
+  snapRaycastDownForGroundY: 1
+  snapGroundRaycastStartAbove: 5
+  snapGroundRaycastMaxDistance: 100
+  snapGroundRaycastLayers:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  snapGroundYClearance: 0.08
   takeDamageSound: {fileID: 0}
   unitDeathSound: {fileID: 0}
+  bishopFireSound: {fileID: 0}
+  bishopReloadSound: {fileID: 0}
   unitAudioSource: {fileID: 0}
   unitDisplayNameOverride: Tank
   tacticalPortrait: {fileID: -1228184200, guid: a0658a6e93c43e644912dbc955591069, type: 3}
@@ -106,6 +120,9 @@ MonoBehaviour:
   attackStateName: 
   attackDamageStartTime: 0
   attackDamageEndTime: 0
+  rangedShootStateName: BishopShoot
+  rangedShootFireNormalizedTime: 0.72
+  rangedShootAnimTimeoutSeconds: 1.5
 --- !u!114 &7661899131456582193
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -247,6 +264,14 @@ MonoBehaviour:
   muzzleFlashVfxPrefab: {fileID: 8570617819391195996, guid: e84c9d34cc06bac4aa60c88ac49fa8ad, type: 3}
   tracerVfxPrefab: {fileID: 5877415797716960729, guid: 2f9b3c5db8049014fb59e8f84992bc7b, type: 3}
   impactVfxPrefab: {fileID: 5006029902303117440, guid: 52495e0eab84db846ae79befb32a336f, type: 3}
+  tracerLineWidth: 0.37
+  tankFireSound: {fileID: 8300000, guid: f73a485e7404ad943a2805cc3c6cf7d5, type: 3}
+  tankReloadSound: {fileID: 8300000, guid: b04c1bb1f2f2f57438de7b0e68791d1e, type: 3}
+  tankMoveSound: {fileID: 8300000, guid: 8d6ff98f506973c4097aa69293b3ffb9, type: 3}
+  tankFireSoundVolume: 1
+  tankReloadSoundVolume: 1
+  tankMoveSoundVolume: 0.55
+  moveSoundMinSpeed: 0.15
 --- !u!1 &2561301227964729903
 GameObject:
   m_ObjectHideFlags: 0

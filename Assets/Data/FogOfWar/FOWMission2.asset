@@ -13,37 +13,37 @@ MonoBehaviour:
   m_Name: FOWMission2
   m_EditorClassIdentifier: Assembly-CSharp::FogOfWarSettings
   worldMinXZ: {x: -40, y: -50}
-  worldMaxXZ: {x: 40, y: 50}
+  worldMaxXZ: {x: 60, y: 70}
   textureResolution: 512
-  whiteConeRangeMeters: 18
+  whiteConeRangeMeters: 20
   whiteConeFovDegrees: 107
-  nearRevealRadiusMeters: 2.5
-  fogAppearance: 0
-  fogAlbedoTexture: {fileID: 2800000, guid: e54fca0b0a5c8f74d980c34348c7e918, type: 3}
-  fogAlbedoTileX: 5.07
+  nearRevealRadiusMeters: 5
+  fogAppearance: 1
+  fogAlbedoTexture: {fileID: 2800000, guid: 0e45368bdc9a7354ab49aa54d79dec50, type: 3}
+  fogAlbedoTileX: 4
   fogAlbedoTileY: 4
-  fogAlbedoTint: {r: 1, g: 1, b: 1, a: 1}
-  unexploredFogAlpha: 0.903
-  exploredFogAlpha: 0.576
-  overlayHeightY: 6.7
-  overlayScalePadding: 0.05
+  fogAlbedoTint: {r: 0.9622642, g: 0.9622642, b: 0.9622642, a: 1}
+  unexploredFogAlpha: 0.9
+  exploredFogAlpha: 0.4
+  overlayHeightY: 3
+  overlayScalePadding: 1.53
   useSoftStampEdges: 1
   stampFeatherPixels: 1
-  disableTacticalOverlayFog: 1
-  tacticalFogColor: {r: 0, g: 0, b: 0, a: 1}
-  tacticalVisibleFade: 0.12
+  disableTacticalOverlayFog: 0
+  tacticalFogColor: {r: 0.98490566, g: 0.98490566, b: 0.98490566, a: 1}
+  tacticalVisibleFade: 0.49
   disableTacticalScreenFog: 0
-  tacticalScreenFogColor: {r: 0, g: 0, b: 0, a: 1}
-  tacticalScreenUnexploredAlpha: 0.949
-  tacticalScreenExploredAlpha: 0.162
+  tacticalScreenFogColor: {r: 0.93962264, g: 0.93962264, b: 0.93962264, a: 0.9019608}
+  tacticalScreenUnexploredAlpha: 1
+  tacticalScreenExploredAlpha: 0
   tacticalScreenHeightStart: 0
-  tacticalScreenHeightEnd: 200
-  tacticalScreenSkyDepthThreshold: 0.999
-  tacticalScreenVisibleFade: 25.99
-  tacticalScreenExploredFade: 0.09
-  actionFogColor: {r: 0, g: 0, b: 0, a: 1}
-  actionFogHeightStart: -1
-  actionFogHeightEnd: 79.8
-  actionSkyDepthThreshold: 0.99
-  actionVisibleFade: 0.12
-  actionExploredFade: 0.08
+  tacticalScreenHeightEnd: 60
+  tacticalScreenSkyDepthThreshold: 0.9968
+  tacticalScreenVisibleFade: 0.1
+  tacticalScreenExploredFade: 0.001
+  actionFogColor: {r: 1, g: 1, b: 1, a: 1}
+  actionFogHeightStart: 0
+  actionFogHeightEnd: 50
+  actionSkyDepthThreshold: 0.9726
+  actionVisibleFade: 0.001
+  actionExploredFade: 2

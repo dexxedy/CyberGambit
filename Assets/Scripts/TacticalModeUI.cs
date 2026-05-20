@@ -56,9 +56,15 @@ public class TacticalModeUI : MonoBehaviour
         
         if (GameManager.Instance != null)
         {
+            if (GameManager.Instance.IsGameOver())
+            {
+                turnPanel.SetActive(false);
+                return;
+            }
+
             bool inTactical = CameraManager.Instance == null || !CameraManager.Instance.IsActionMode();
             bool shouldShow = inTactical && !GameManager.Instance.IsArmyDeploymentPhase();
-            
+
             turnPanel.SetActive(shouldShow);
             
             if (shouldShow)

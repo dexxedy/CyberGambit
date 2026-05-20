@@ -24,6 +24,12 @@ public class TacticalWorldIconsController : MonoBehaviour
         return iconPrefab != null && iconsRoot != null;
     }
 
+    public void SetIconsRootVisible(bool visible)
+    {
+        if (iconsRoot != null)
+            iconsRoot.gameObject.SetActive(visible);
+    }
+
     private void Awake()
     {
         if (Instance == null)
@@ -42,6 +48,11 @@ public class TacticalWorldIconsController : MonoBehaviour
     {
         if (CameraManager.Instance == null) return;
         if (GameManager.Instance != null && GameManager.Instance.IsPaused()) return;
+        if (GameManager.Instance != null && GameManager.Instance.IsGameOver())
+        {
+            SetIconsRootVisible(false);
+            return;
+        }
 
         bool tactical = !CameraManager.Instance.IsActionMode();
         if (!IsConfigured())
