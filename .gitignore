@@ -25,13 +25,18 @@
 /output/
 /outputs/
 /tmp/
-/course_insertions_render/
-/course_insertions_tmp/
 /current_build_user_screen_*.png
 /old_build_user_screen_*.png
 /old_build_screenshot*.png
 /old_build_gameplay*.png
 /[Pp]rofilerCaptures/
+
+# Local coursework and report generation
+/Docs/Portfolio/
+/add_course_insertions.py
+/tools/build_lab[0-9]*_report.py
+/course_insertions_render/
+/course_insertions_tmp/
 
 # Local asset pack with redistribution restrictions
 /Assets/Tree_Packs/
