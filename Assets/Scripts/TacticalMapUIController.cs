@@ -202,7 +202,7 @@ public class TacticalMapUIController : MonoBehaviour
         if (GameManager.Instance.IsPaused()) return;
         if (unit.owner != GameManager.Instance.currentPlayer) return;
         if (GameManager.Instance.IsBotTurn()) return;
-        if (!GameManager.Instance.HasRolledDiceThisTurn()) return;
+        if (!GameManager.Instance.HasTurnMoveBudget()) return;
 
         CameraManager.Instance.TrySwitchToActionModeFromMap(unit);
     }

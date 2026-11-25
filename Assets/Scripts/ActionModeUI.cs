@@ -17,6 +17,7 @@ public class ActionModeUI : MonoBehaviour
     [SerializeField] private Color defaultColor = Color.white;
     [SerializeField] private Color enemyColor = Color.red;
     [SerializeField] private Color allyColor = Color.green;
+    [SerializeField] private Color outOfRangeEnemyColor = new Color(0.45f, 0.45f, 0.45f, 1f);
     
     [Header("Enemy Health")]
     [SerializeField] private GameObject enemyHealthPanel;
@@ -50,6 +51,7 @@ public class ActionModeUI : MonoBehaviour
     
     private Camera actionCamera;
     private Unit currentTarget;
+    private IDamageableTarget currentDamageableTarget;
     private Unit currentUnit;
     private float lastUpdateTime;
     private Transform healthPointPanel;
@@ -204,13 +206,44 @@ public class ActionModeUI : MonoBehaviour
             crosshairImage.gameObject.SetActive(true);
         
         Unit targetUnit = GetUnitUnderCrosshair();
+        IDamageableTarget damageableTarget = targetUnit == null ? GetDamageableTargetUnderCrosshair() : null;
         
         if (targetUnit != null)
         {
             Unit currentControlledUnit = CameraManager.Instance.GetCurrentControlledUnit();
             if (currentControlledUnit != null)
             {
-                crosshairImage.color = targetUnit.owner == currentControlledUnit.owner ? allyColor : enemyColor;
+                if (targetUnit.owner == currentControlledUnit.owner)
+                {
+                    crosshairImage.color = allyColor;
+                }
+                else
+                {
+                    crosshairImage.color = IsTargetInRangedAttackRange(currentControlledUnit, targetUnit)
+                        ? enemyColor
+                        : outOfRangeEnemyColor;
+                }
+            }
+            else
+            {
+                crosshairImage.color = defaultColor;
+            }
+        }
+        else if (damageableTarget != null)
+        {
+            Unit currentControlledUnit = CameraManager.Instance.GetCurrentControlledUnit();
+            if (currentControlledUnit != null)
+            {
+                if (damageableTarget.Owner == currentControlledUnit.owner)
+                {
+                    crosshairImage.color = allyColor;
+                }
+                else
+                {
+                    crosshairImage.color = IsTargetInRangedAttackRange(currentControlledUnit, damageableTarget)
+                        ? enemyColor
+                        : outOfRangeEnemyColor;
+                }
             }
             else
             {
@@ -229,10 +262,12 @@ public class ActionModeUI : MonoBehaviour
         
         Unit targetUnit = GetUnitUnderCrosshair();
         Unit currentControlledUnit = CameraManager.Instance.GetCurrentControlledUnit();
+        IDamageableTarget damageableTarget = targetUnit == null ? GetDamageableTargetUnderCrosshair() : null;
         if (targetUnit != null && currentControlledUnit != null && targetUnit.owner != currentControlledUnit.owner)
         {
             if (currentTarget != targetUnit)
                 currentTarget = targetUnit;
+            currentDamageableTarget = null;
             
             if (!enemyHealthPanel.activeSelf)
                 enemyHealthPanel.SetActive(true);
@@ -247,17 +282,38 @@ public class ActionModeUI : MonoBehaviour
             if (enemyNameText != null)
                 enemyNameText.text = GetUnitDisplayName(targetUnit.chessType);
         }
+        else if (damageableTarget != null && currentControlledUnit != null && damageableTarget.Owner != currentControlledUnit.owner)
+        {
+            currentTarget = null;
+            currentDamageableTarget = damageableTarget;
+
+            if (!enemyHealthPanel.activeSelf)
+                enemyHealthPanel.SetActive(true);
+
+            if (enemyHealthText != null)
+                enemyHealthText.text = $"HP: {damageableTarget.CurrentHealth}/{damageableTarget.MaxHealth}";
+
+            if (enemyNameText != null)
+                enemyNameText.text = damageableTarget.DisplayName;
+        }
         else
         {
             if (enemyHealthPanel.activeSelf)
                 enemyHealthPanel.SetActive(false);
             currentTarget = null;
+            currentDamageableTarget = null;
         }
     }
     
     private void UpdateAbilityInfo()
     {
         if (abilityPanel == null) return;
+        if (!GameManager.UnitAbilitiesAllowed)
+        {
+            if (abilityPanel.activeSelf)
+                abilityPanel.SetActive(false);
+            return;
+        }
         
         Unit controlledUnit = CameraManager.Instance.GetCurrentControlledUnit();
         
@@ -344,6 +400,56 @@ public class ActionModeUI : MonoBehaviour
         
         return null;
     }
+
+    private IDamageableTarget GetDamageableTargetUnderCrosshair()
+    {
+        if (actionCamera == null) return null;
+
+        Ray ray = actionCamera.ScreenPointToRay(new Vector3(Screen.width / 2f, Screen.height / 2f, 0f));
+        if (Physics.Raycast(ray, out RaycastHit hit, raycastDistance))
+            return FindDamageableInParents(hit.collider);
+
+        return null;
+    }
+
+    private static bool IsTargetInRangedAttackRange(Unit attacker, Unit target)
+    {
+        if (attacker == null || target == null)
+            return true;
+
+        if (!attacker.TryGetRangedAttackRangeMeters(out float rangeMeters))
+            return true;
+
+        float distance = Vector3.Distance(attacker.transform.position, target.transform.position);
+        return distance <= rangeMeters;
+    }
+
+    private static bool IsTargetInRangedAttackRange(Unit attacker, IDamageableTarget target)
+    {
+        if (attacker == null || target == null)
+            return true;
+
+        if (!attacker.TryGetRangedAttackRangeMeters(out float rangeMeters))
+            return true;
+
+        Transform aimPoint = target.AimPoint;
+        Vector3 targetPosition = aimPoint != null ? aimPoint.position : attacker.transform.position;
+        float distance = Vector3.Distance(attacker.transform.position, targetPosition);
+        return distance <= rangeMeters;
+    }
+
+    private static IDamageableTarget FindDamageableInParents(Collider collider)
+    {
+        if (collider == null) return null;
+        MonoBehaviour[] behaviours = collider.GetComponentsInParent<MonoBehaviour>();
+        foreach (MonoBehaviour behaviour in behaviours)
+        {
+            if (behaviour is IDamageableTarget damageable)
+                return damageable;
+        }
+
+        return null;
+    }
     
     private void UpdateStats()
     {
@@ -415,6 +521,7 @@ public class ActionModeUI : MonoBehaviour
         HideStatsPanels();
         
         currentTarget = null;
+        currentDamageableTarget = null;
         currentUnit = null;
     }
     

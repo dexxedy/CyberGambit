@@ -596,6 +596,16 @@ public class Unit : MonoBehaviour
         return equippedWeapon;
     }
 
+    public bool TryGetRangedAttackRangeMeters(out float rangeMeters)
+    {
+        rangeMeters = 0f;
+        if (equippedWeapon == null || equippedWeapon.Config == null)
+            return false;
+
+        rangeMeters = Mathf.Max(0.1f, equippedWeapon.Config.maxHitRangeMeters);
+        return true;
+    }
+
     /// <summary>
     /// Проверяет, атакует ли юнит в данный момент, проверяя состояние аниматора
     /// </summary>

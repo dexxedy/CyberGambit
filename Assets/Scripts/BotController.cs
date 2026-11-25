@@ -290,24 +290,25 @@ public class BotController : MonoBehaviour
             yield break;
         }
 
-        if (preDiceRollDelay > 0f)
+        bool usesDice = GameManager.Instance != null && GameManager.Instance.UsesTurnDice;
+        if (usesDice && preDiceRollDelay > 0f)
             yield return new WaitForSeconds(preDiceRollDelay);
 
         // 3) Кубик и паузы; 4) действие уже выбранного юнита
         float moveBudgetMeters = 0f;
         if (GameManager.Instance != null)
         {
-            if (!GameManager.Instance.HasRolledDiceThisTurn())
+            if (usesDice && !GameManager.Instance.HasRolledDiceThisTurn())
             {
                 GameManager.Instance.RollDiceForCurrentTurn();
             }
             moveBudgetMeters = GameManager.Instance.GetCurrentTurnMoveBudgetMeters();
         }
 
-        if (dicePresentationDelay > 0f)
+        if (usesDice && dicePresentationDelay > 0f)
             yield return new WaitForSeconds(dicePresentationDelay);
 
-        if (postDiceRollDelay > 0f)
+        if (usesDice && postDiceRollDelay > 0f)
             yield return new WaitForSeconds(postDiceRollDelay);
 
         // Mission brains: each mission can provide its own behavior without bloating BotController.

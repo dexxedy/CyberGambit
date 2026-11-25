@@ -30,14 +30,19 @@ public static class FogWarVisionStamper
         int minY = Mathf.Max(0, cy - rCells);
         int maxY = Mathf.Min(resolution - 1, cy + rCells);
 
+        float invResolution = 1f / resolution;
         float rSq = radiusMeters * radiusMeters;
         for (int y = minY; y <= maxY; y++)
         {
+            float nz = (y + 0.5f) * invResolution;
+            float cellZ = Mathf.Lerp(worldMinXZ.y, worldMaxXZ.y, nz);
+            float dz = cellZ - worldCenter.z;
+
             for (int x = minX; x <= maxX; x++)
             {
-                Vector3 cellWorld = CellToWorld(x, y, worldMinXZ, worldMaxXZ, resolution);
-                float dx = cellWorld.x - worldCenter.x;
-                float dz = cellWorld.z - worldCenter.z;
+                float nx = (x + 0.5f) * invResolution;
+                float cellX = Mathf.Lerp(worldMinXZ.x, worldMaxXZ.x, nx);
+                float dx = cellX - worldCenter.x;
                 float distSq = dx * dx + dz * dz;
                 if (distSq > rSq) continue;
 
@@ -52,8 +57,8 @@ public static class FogWarVisionStamper
                 }
 
                 int idx = x + y * resolution;
-                explored[idx] = (byte)Mathf.Max(explored[idx], value);
-                visible[idx] = (byte)Mathf.Max(visible[idx], value);
+                if (value > explored[idx]) explored[idx] = value;
+                if (value > visible[idx]) visible[idx] = value;
             }
         }
     }
@@ -94,26 +99,35 @@ public static class FogWarVisionStamper
         int maxY = Mathf.Min(resolution - 1, oy + rCells);
 
         float halfFov = Mathf.Max(1f, fovDegrees) * 0.5f;
+        float cosHalfFov = Mathf.Cos(halfFov * Mathf.Deg2Rad);
         float rangeSq = rangeMeters * rangeMeters;
+        float invResolution = 1f / resolution;
+        float forwardX = worldForward.x;
+        float forwardZ = worldForward.z;
 
         for (int y = minY; y <= maxY; y++)
         {
+            float nz = (y + 0.5f) * invResolution;
+            float cellZ = Mathf.Lerp(worldMinXZ.y, worldMaxXZ.y, nz);
+            float dz = cellZ - worldOrigin.z;
+
             for (int x = minX; x <= maxX; x++)
             {
-                Vector3 cellWorld = CellToWorld(x, y, worldMinXZ, worldMaxXZ, resolution);
-                Vector3 to = cellWorld - worldOrigin;
-                to.y = 0f;
-                float distSq = to.sqrMagnitude;
+                float nx = (x + 0.5f) * invResolution;
+                float cellX = Mathf.Lerp(worldMinXZ.x, worldMaxXZ.x, nx);
+                float dx = cellX - worldOrigin.x;
+                float distSq = dx * dx + dz * dz;
                 if (distSq < 0.0001f || distSq > rangeSq) continue;
 
-                Vector3 dir = to.normalized;
-                float angle = Vector3.Angle(worldForward, dir);
-                if (angle > halfFov) continue;
+                float invDist = 1f / Mathf.Sqrt(distSq);
+                float dot = (dx * forwardX + dz * forwardZ) * invDist;
+                if (dot < cosHalfFov) continue;
 
                 byte value = 255;
                 if (softEdges && featherPixels > 0)
                 {
-                    float dist = Mathf.Sqrt(distSq);
+                    float dist = 1f / invDist;
+                    float angle = Mathf.Acos(Mathf.Clamp(dot, -1f, 1f)) * Mathf.Rad2Deg;
                     float rangeFade = rangeMeters - dist;
                     float angleFade = halfFov - angle;
                     float featherWorld = featherPixels * cellRadius;
@@ -124,8 +138,8 @@ public static class FogWarVisionStamper
                 }
 
                 int idx = x + y * resolution;
-                explored[idx] = (byte)Mathf.Max(explored[idx], value);
-                visible[idx] = (byte)Mathf.Max(visible[idx], value);
+                if (value > explored[idx]) explored[idx] = value;
+                if (value > visible[idx]) visible[idx] = value;
             }
         }
     }

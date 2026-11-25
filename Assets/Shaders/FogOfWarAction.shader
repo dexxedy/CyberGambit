@@ -96,6 +96,16 @@ Shader "CyberGambit/FogOfWarAction"
                 return saturate(uv);
             }
 
+            bool IsInsideFogBounds(float3 worldPos)
+            {
+                float2 minXZ = _WorldMinXZ.xy;
+                float2 maxXZ = _WorldMaxXZ.xy;
+                return worldPos.x >= minXZ.x
+                    && worldPos.x <= maxXZ.x
+                    && worldPos.z >= minXZ.y
+                    && worldPos.z <= maxXZ.y;
+            }
+
             bool IsSkyDepth(float rawDepth)
             {
 #if UNITY_REVERSED_Z
@@ -117,6 +127,9 @@ Shader "CyberGambit/FogOfWarAction"
                     return sceneColor;
 
                 float3 worldPos = ComputeWorldSpacePosition(uv, rawDepth, UNITY_MATRIX_I_VP);
+                if (!IsInsideFogBounds(worldPos))
+                    return sceneColor;
+
                 float2 fogUv = WorldXZToFogUV(worldPos);
 
                 float visible = SAMPLE_TEXTURE2D(_VisibleTex, sampler_VisibleTex, fogUv).r;

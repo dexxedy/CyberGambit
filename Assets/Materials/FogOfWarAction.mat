@@ -37,19 +37,19 @@ Material:
         m_Offset: {x: 0, y: 0}
     m_Ints: []
     m_Floats:
-    - _ExploredAlpha: 0
-    - _ExploredFade: 0.001
-    - _HeightEnd: 60
+    - _ExploredAlpha: 0.4
+    - _ExploredFade: 2
+    - _HeightEnd: 50
     - _HeightStart: 0
-    - _SkyDepthThreshold: 0.9968
-    - _UnexploredAlpha: 1
-    - _UseFogAlbedoTex: 1
-    - _VisibleFade: 0.1
+    - _SkyDepthThreshold: 0.9726
+    - _UnexploredAlpha: 0.9
+    - _UseFogAlbedoTex: 0
+    - _VisibleFade: 0.001
     m_Colors:
-    - _FogAlbedoTile: {r: 4, g: 4, b: 0, a: 0}
+    - _FogAlbedoTile: {r: 2, g: 2, b: 0, a: 0}
     - _FogAlbedoTint: {r: 0.9622642, g: 0.9622642, b: 0.9622642, a: 1}
-    - _FogColor: {r: 0.93962264, g: 0.93962264, b: 0.93962264, a: 0.9019608}
-    - _WorldMaxXZ: {r: 60, g: 70, b: 0, a: 0}
-    - _WorldMinXZ: {r: -40, g: -50, b: 0, a: 0}
+    - _FogColor: {r: 1, g: 1, b: 1, a: 1}
+    - _WorldMaxXZ: {r: 120, g: 100, b: 0, a: 0}
+    - _WorldMinXZ: {r: 0, g: 0, b: 0, a: 0}
   m_BuildTextureStacks: []
   m_AllowLocking: 1

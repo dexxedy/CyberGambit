@@ -530,7 +530,7 @@ public class CameraManager : MonoBehaviour
 
         // Mission2 change: tank is controlled like a normal unit (action/FPS mode).
 
-        if (!GameManager.Instance.HasRolledDiceThisTurn()) return;
+        if (!GameManager.Instance.HasTurnMoveBudget()) return;
         SwitchToActionMode(unit);
     }
 

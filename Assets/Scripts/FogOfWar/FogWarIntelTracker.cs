@@ -49,7 +49,7 @@ public class FogWarIntelTracker : MonoBehaviour
 
     public bool HasIntel(Unit enemy)
     {
-        return enemy != null && everVisible.Contains(enemy);
+        return enemy != null && (FogOfWarManager.Instance == null || everVisible.Contains(enemy));
     }
 
     public bool IsCurrentlyVisible(Unit enemy)
@@ -93,6 +93,13 @@ public class FogWarIntelTracker : MonoBehaviour
         pos = default;
         isExact = false;
         if (enemy == null) return false;
+
+        if (FogOfWarManager.Instance == null)
+        {
+            pos = enemy.transform.position;
+            isExact = true;
+            return true;
+        }
 
         if (IsEnemyShownForBotTurnPresentation(enemy))
         {

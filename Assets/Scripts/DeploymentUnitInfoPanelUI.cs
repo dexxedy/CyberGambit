@@ -83,14 +83,15 @@ public class DeploymentUnitInfoPanelUI : MonoBehaviour
             healthText.color = statValueColor;
         }
 
+        bool showAbilities = GameManager.UnitAbilitiesAllowed;
         if (abilityNameText != null)
-            abilityNameText.text = UnitAbilityDisplayTexts.GetAbilityTitle(unit.chessType);
+            abilityNameText.text = showAbilities ? UnitAbilityDisplayTexts.GetAbilityTitle(unit.chessType) : "";
 
         if (abilityDescriptionText != null)
-            abilityDescriptionText.text = UnitAbilityDisplayTexts.GetAbilityDescription(unit.chessType);
+            abilityDescriptionText.text = showAbilities ? UnitAbilityDisplayTexts.GetAbilityDescription(unit.chessType) : "";
 
         if (abilityCooldownText != null)
-            abilityCooldownText.text = UnitAbilityDisplayTexts.GetAbilityCooldownLine(unit);
+            abilityCooldownText.text = showAbilities ? UnitAbilityDisplayTexts.GetAbilityCooldownLine(unit) : "";
 
         panelRoot.SetActive(true);
     }

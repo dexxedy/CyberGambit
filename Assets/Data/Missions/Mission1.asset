@@ -16,6 +16,6 @@ MonoBehaviour:
   displayName: "\u041F\u0440\u043E\u0440\u044B\u0432"
   objectiveShort: "\u0417\u0430\u0445\u0432\u0430\u0442\u0438\u0442\u0435 \u0442\u0440\u0438
     \u0442\u043E\u0447\u043A\u0438 \u043A\u043E\u043D\u0442\u0440\u043E\u043B\u044F."
-  previewSprite: {fileID: 21300000, guid: 21354bee51588514184e6ff1f9b9ebbb, type: 3}
+  previewSprite: {fileID: 21300000, guid: 5d4a347567dd1e64592efa9b56b096ab, type: 3}
   sceneName: mission1
   objectivesConfig: {fileID: 11400000, guid: c1d2e3f4a5b697886554433221100990, type: 2}

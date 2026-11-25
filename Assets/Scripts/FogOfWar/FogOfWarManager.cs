@@ -21,6 +21,11 @@ public class FogOfWarManager : MonoBehaviour
 
     [SerializeField] private FogOfWarSettings settings;
 
+    [Header("Performance")]
+    [SerializeField] private float actionUpdateIntervalSeconds = 0.06f;
+    [SerializeField] private float tacticalUpdateIntervalSeconds = 0.1f;
+    [SerializeField] private float actionCameraForceUpdateAngleDegrees = 2f;
+
     private Texture2D exploredTexture;
     private Texture2D visibleTexture;
     private Texture2D displayExploredTexture;
@@ -33,6 +38,9 @@ public class FogOfWarManager : MonoBehaviour
     private Unit botSpectatorVisionUnit;
     private int resolution;
     private bool initialized;
+    private float nextFogUpdateTime;
+    private Vector3 lastActionFogCameraForward;
+    private bool hasLastActionFogCameraForward;
 
     public FogOfWarSettings Settings => settings;
     public Texture2D ExploredTexture => exploredTexture;
@@ -214,6 +222,12 @@ public class FogOfWarManager : MonoBehaviour
             return;
         if (!initialized) InitializeTextures();
 
+        bool forceUpdate = ShouldForceActionFogUpdateByCameraTurn();
+        float updateInterval = GetUpdateIntervalSeconds();
+        if (!forceUpdate && updateInterval > 0f && Time.time < nextFogUpdateTime)
+            return;
+        nextFogUpdateTime = Time.time + updateInterval;
+
         RunVisionPass();
 
         if (IsBotSpectatorFogActive())
@@ -312,6 +326,8 @@ public class FogOfWarManager : MonoBehaviour
 
         System.Array.Clear(exploredPixels, 0, exploredPixels.Length);
         System.Array.Clear(visiblePixels, 0, visiblePixels.Length);
+        nextFogUpdateTime = 0f;
+        hasLastActionFogCameraForward = false;
         PushTexturesToGpu();
     }
 
@@ -483,6 +499,47 @@ public class FogOfWarManager : MonoBehaviour
     public bool IsWorldPositionVisibleOnDisplay(Vector3 worldPos)
     {
         return GetDisplayCellState(worldPos) == FogCellState.Visible;
+    }
+
+    private float GetUpdateIntervalSeconds()
+    {
+        bool actionMode = CameraManager.Instance != null && CameraManager.Instance.IsActionMode();
+        float interval = actionMode ? actionUpdateIntervalSeconds : tacticalUpdateIntervalSeconds;
+        return Mathf.Max(0f, interval);
+    }
+
+    private bool ShouldForceActionFogUpdateByCameraTurn()
+    {
+        if (CameraManager.Instance == null || !CameraManager.Instance.IsActionMode())
+        {
+            hasLastActionFogCameraForward = false;
+            return false;
+        }
+
+        Camera actionCam = CameraManager.Instance.GetActionCamera();
+        if (actionCam == null)
+            return false;
+
+        Vector3 forward = actionCam.transform.forward;
+        forward.y = 0f;
+        if (forward.sqrMagnitude < 0.0001f)
+            return false;
+
+        forward.Normalize();
+        if (!hasLastActionFogCameraForward)
+        {
+            lastActionFogCameraForward = forward;
+            hasLastActionFogCameraForward = true;
+            return true;
+        }
+
+        float cosThreshold = Mathf.Cos(Mathf.Max(0.1f, actionCameraForceUpdateAngleDegrees) * Mathf.Deg2Rad);
+        float dot = Vector3.Dot(lastActionFogCameraForward, forward);
+        if (dot >= cosThreshold)
+            return false;
+
+        lastActionFogCameraForward = forward;
+        return true;
     }
 
     public Vector3 GetWorldBoundsCenter()

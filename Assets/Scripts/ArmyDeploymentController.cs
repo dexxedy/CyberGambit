@@ -49,6 +49,7 @@ public class ArmyDeploymentController : MonoBehaviour
     [Header("Правила готовности")]
     [SerializeField] private bool requireAtLeastOneUnit = true;
     [SerializeField] private bool requireExactlyOneKing = true;
+    [SerializeField] private bool requireDeployedInfantry;
 
     [Header("Spawn orientation (deployment)")]
     [Tooltip("Поворот юнитов при размещении (Yaw вокруг Y). 0 = смотреть по +Z (вперёд), 90 = вправо, -90 = влево.")]
@@ -381,6 +382,23 @@ public class ArmyDeploymentController : MonoBehaviour
     private bool ValidateDeploymentRequirements(out string hint)
     {
         hint = "";
+
+        if (requireDeployedInfantry)
+        {
+            bool hasInfantry = false;
+            foreach (Unit unit in deployed.Keys)
+            {
+                if (unit == null || unit.IsTankUnit || unit.GetHealth() <= 0) continue;
+                hasInfantry = true;
+                break;
+            }
+
+            if (!hasInfantry)
+            {
+                hint = "Поставьте бойца для взлома терминала.";
+                return false;
+            }
+        }
 
         Unit[] all = FindObjectsByType<Unit>(FindObjectsInactive.Exclude);
         int p1 = 0;

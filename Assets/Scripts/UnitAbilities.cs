@@ -30,6 +30,7 @@ public class UnitAbilities : MonoBehaviour
     
     void Update()
     {
+        if (!GameManager.UnitAbilitiesAllowed) return;
         // Обработка активации способности только для контролируемого юнита в экшен-режиме
         if (unit == null) return;
         if (!unit.IsControlled()) return;
@@ -48,7 +49,7 @@ public class UnitAbilities : MonoBehaviour
     /// </summary>
     public void ActivateAbility()
     {
-        if (unit == null) return;
+        if (unit == null || !GameManager.UnitAbilitiesAllowed) return;
         
         switch (unit.chessType)
         {
@@ -372,7 +373,7 @@ public class UnitAbilities : MonoBehaviour
     /// </summary>
     public bool IsAbilityReady()
     {
-        return GetAbilityCooldown() == 0;
+        return GameManager.UnitAbilitiesAllowed && GetAbilityCooldown() == 0;
     }
     
     /// <summary>

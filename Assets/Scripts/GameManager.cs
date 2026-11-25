@@ -24,6 +24,9 @@ public class GameManager : MonoBehaviour
     [Header("Game Mode (для тестирования)")]
     [Tooltip("Режим игры для тестирования. Используется только если игра запущена напрямую в SampleScene (не из MainMenu)")]
     [SerializeField] private GameMode testGameMode = GameMode.PlayerVsPlayer;
+    [SerializeField] private bool allowUnitAbilities = true;
+
+    public static bool UnitAbilitiesAllowed => Instance == null || Instance.allowUnitAbilities;
     
     [Header("UI End Game")]
     [SerializeField] private GameObject gameOverPanel; // Ссылка на панель
@@ -38,7 +41,9 @@ public class GameManager : MonoBehaviour
     [SerializeField] private Slider musicVolumeSlider; // Слайдер громкости музыки
     [SerializeField] private Slider sfxVolumeSlider; // Слайдер громкости звуковых эффектов
     
-    [Header("Dice Movement")]
+    [Header("Turn Movement")]
+    [SerializeField] private bool useTurnDice = true;
+    [SerializeField, Min(0f)] private float fixedTurnMoveMeters = 60f;
     [SerializeField] private int diceMin = 1;
     [SerializeField] private int diceMax = 6;
     [SerializeField] private float metersPerDicePoint = 25f;
@@ -159,20 +164,23 @@ public class GameManager : MonoBehaviour
     }
     
     public bool HasRolledDiceThisTurn() => hasRolledDiceThisTurn;
+    public bool UsesTurnDice => useTurnDice;
+    public bool HasTurnMoveBudget() => !useTurnDice || hasRolledDiceThisTurn;
     public int GetCurrentTurnDice() => currentTurnDice;
     public float GetMetersPerDicePoint() => metersPerDicePoint;
     public float ConvertDiceToMeters(int diceValue) => Mathf.Max(0, diceValue) * Mathf.Max(0f, metersPerDicePoint);
-    public float GetCurrentTurnMoveBudgetMeters() => ConvertDiceToMeters(currentTurnDice);
+    public float GetCurrentTurnMoveBudgetMeters() => useTurnDice ? ConvertDiceToMeters(currentTurnDice) : fixedTurnMoveMeters;
     public bool IsGameOver() => isGameOver;
 
     /// <summary> Максимальное значение грани кубика (для оценки хода до броска). </summary>
     public int GetDiceFaceMax() => Mathf.Max(diceMin, diceMax);
 
     /// <summary> Верхняя оценка метража хода до броска (как при максимальном значении кубика). </summary>
-    public float GetMaxPossibleMoveBudgetMeters() => ConvertDiceToMeters(GetDiceFaceMax());
+    public float GetMaxPossibleMoveBudgetMeters() => useTurnDice ? ConvertDiceToMeters(GetDiceFaceMax()) : fixedTurnMoveMeters;
     
     public int RollDiceForCurrentTurn()
     {
+        if (!useTurnDice) return 0;
         if (isGameOver) return currentTurnDice;
         if (armyDeploymentPhaseActive) return currentTurnDice;
 
@@ -404,7 +412,7 @@ public class GameManager : MonoBehaviour
         Unit.StopAllUnitMoveSounds();
         ResetDiceForNextTurn();
         // Автобросок только для бота. Игрок бросает сам (см. DiceRenderUI / будущий UI).
-        if (IsBotTurn())
+        if (useTurnDice && IsBotTurn())
         {
             RollDiceForCurrentTurn();
         }

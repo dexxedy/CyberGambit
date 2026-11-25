@@ -162,6 +162,15 @@ public class Weapon : MonoBehaviour
                     target.TakeDamage(finalDamage, owner);
                 }
             }
+            else
+            {
+                IDamageableTarget damageable = FindDamageableInParents(hit.collider);
+                if (damageable != null && damageable.IsAlive && damageable.Owner != owner.owner)
+                {
+                    int finalDamage = Mathf.RoundToInt(baseDamage * owner.GetDamageMultiplier());
+                    damageable.ApplyDamage(finalDamage, owner);
+                }
+            }
         }
 
         // Визуал: луч от дула; урон — по origin/direction (у игрока это камера).
@@ -333,6 +342,19 @@ public class Weapon : MonoBehaviour
         Destroy(go, ttl);
     }
 
+    private static IDamageableTarget FindDamageableInParents(Collider collider)
+    {
+        if (collider == null) return null;
+        MonoBehaviour[] behaviours = collider.GetComponentsInParent<MonoBehaviour>();
+        foreach (MonoBehaviour behaviour in behaviours)
+        {
+            if (behaviour is IDamageableTarget damageable)
+                return damageable;
+        }
+
+        return null;
+    }
+
     /// <summary>Утилита: подобрать origin на NavMesh/с поверхности, если нужно.</summary>
     public static Vector3 SafeOrigin(Vector3 origin)
     {
@@ -341,4 +363,3 @@ public class Weapon : MonoBehaviour
         return origin;
     }
 }
-
