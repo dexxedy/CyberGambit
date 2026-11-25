@@ -12,6 +12,31 @@
 /[Uu]ser[Ss]ettings/
 *.log
 
+# Local agent and workspace files
+/.codex*/
+/.omx/
+/omx_wiki/
+/.agents/
+/.cursor/
+/.work/
+
+# Local generated files and captures
+/GeneratedAssets/
+/output/
+/outputs/
+/tmp/
+/course_insertions_render/
+/course_insertions_tmp/
+/current_build_user_screen_*.png
+/old_build_user_screen_*.png
+/old_build_screenshot*.png
+/old_build_gameplay*.png
+/[Pp]rofilerCaptures/
+
+# Local asset pack with redistribution restrictions
+/Assets/Tree_Packs/
+/Assets/Tree_Packs.meta
+
 # MemoryCaptures can get excessive in size.
 # They also could contain extremely sensitive data
 /[Mm]emoryCaptures/
@@ -37,6 +62,7 @@ ExportedObj/
 *.csproj
 *.unityproj
 *.sln
+*.slnx
 *.suo
 *.tmp
 *.user
